@@ -155,6 +155,14 @@ svg{display:block;flex:none}
 .watch .plain{margin-top:4px;font-size:15px}
 .meter{height:10px;margin:12px 0 4px;border-radius:5px;background:var(--sym-soft);overflow:hidden}
 .meter span{display:block;height:100%;border-radius:5px;background:var(--sym)}
+.nudge{margin-bottom:12px;background:var(--sunk);border-color:transparent}
+.nudge-top{display:flex;align-items:center;gap:10px}
+.nudge-top svg{width:24px;height:24px;color:var(--sym-ink)}
+.nudge h3{font:600 19px/1.3 var(--round)}
+.nudge p{margin-top:6px;color:var(--ink2)}
+.nudge-acts{display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-top:12px}
+.nudge .btn{min-height:48px;font-size:17px}
+.nudge .btn:not(.btn-primary){background:var(--card)}
 
 .timeline{list-style:none;display:grid;gap:10px}
 .entry{display:flex;align-items:flex-start;gap:12px;width:100%;padding:12px 14px;border-radius:18px;
@@ -479,7 +487,7 @@ import {
   symptomMissing, symptomFields, dayEntries, exposureBanners, pruneDismissed, reintroWatches,
   standaloneHeight, LOAD_CATS, WINDOW_CHOICES, TREND_RANGES, daysBetween, slugify,
   trendDays, trendSeries, phaseBands, phaseTagSlots, suspects, rangeEntries,
-  addCustomTag, tagInUse, mergeStates, readBackup, APP_ID,
+  addCustomTag, tagInUse, mergeStates, readBackup, APP_ID, backupReminder,
 } from './logic.js';
 
 // ---- identity ------------------------------------------------------------------
@@ -488,7 +496,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 4;
+const BUILD = 5;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -621,6 +629,7 @@ const ICON = {
   resp: svg('<path d="M3.5 9h10.5a3 3 0 1 0-3-3"/><path d="M3.5 13h14.5a3 3 0 1 1-3 3"/><path d="M3.5 17h5"/>'),
   other: svg('<rect x="5" y="3.5" width="14" height="17" rx="3"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4"/>'),
   trash: svg('<path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/>'),
+  save: svg('<path d="M12 4.5v10M7.5 10.5l4.5 4.5 4.5-4.5"/><path d="M5 19h14"/>'),
 };
 
 // ---- screens -----------------------------------------------------------------------
@@ -932,7 +941,24 @@ function todayCardsHtml(now) {
       <button class="xbtn" data-act="dismiss" data-key="${esc(b.key)}" aria-label="Dismiss">${ICON.close}</button>
     </div>`;
   }).join('');
-  return banners + reintroWatches(S, now).map(watchHtml).join('');
+  return banners + reintroWatches(S, now).map(watchHtml).join('') + backupNudgeHtml();
+}
+
+// Calm on purpose: the health cards above it matter more on any given day.
+function backupNudgeHtml() {
+  const due = backupReminder(S, todayKey());
+  if (!due) return '';
+  const lead = due.never
+    ? `You haven't backed up this diary yet, and it's ${plural(due.days, 'day')} old.`
+    : `It's been ${plural(due.days, 'day')} since your last backup.`;
+  return `<section class="card nudge" role="status">
+    <div class="nudge-top">${ICON.save}<h3>Time for a backup</h3></div>
+    <p>${esc(lead)} The diary lives only on this phone, so a backup keeps it safe if the phone is lost or the app is removed.</p>
+    <div class="nudge-acts">
+      <button class="btn" data-act="backup-later">Later</button>
+      <button class="btn btn-primary" data-act="backup-now">Back up now</button>
+    </div>
+  </section>`;
 }
 
 function pointsText(x) {
@@ -2613,6 +2639,13 @@ const ACTIONS = {
   'edit-name': () => openNameSheet(),
   'edit-tags': () => openTagsSheet(),
   'clear-all': () => clearAllData(),
+  'backup-now': () => exportBackup(),
+  'backup-later': () => {
+    S.backupSnoozed = nowTs();
+    save();
+    render();
+    toast('Reminder hidden for a week.');
+  },
   dismiss: (el) => {
     S.dismissed = [...pruneDismissed(S, nowTs()), el.dataset.key];
     save();

@@ -558,6 +558,19 @@ test('mergeStates adds what is missing and keeps the current copy on a clash', (
   assert.deepEqual(L.mergeStates(s, incoming).added, { meals: 0, foodLog: 0, symptomLog: 0, phases: 0 }, 'merging twice adds nothing');
 });
 
+test('backupReminder waits for entries and two weeks, and Later holds it off for a week', () => {
+  const today = '2026-09-30';
+  assert.equal(L.backupReminder(diary(), today), null, 'no entries, no reminder');
+  assert.equal(L.backupReminder(diary({ phases: [phase('2026-01-01T00:00')] }), today), null, 'phases alone are not data');
+  assert.equal(L.backupReminder(diary({ foodLog: [food('f1', '2026-09-17T08:00')] }), today), null, '13 days without a first backup is fine');
+  const old = diary({ foodLog: [food('f1', '2026-09-16T08:00')], symptomLog: [sym('s1', '2026-09-20T08:00', 'crying', 1)] });
+  assert.deepEqual(L.backupReminder(old, today), { days: 14, never: true });
+  assert.equal(L.backupReminder({ ...old, lastBackup: '2026-09-20T21:00' }, today), null);
+  assert.deepEqual(L.backupReminder({ ...old, lastBackup: '2026-09-10T21:00' }, today), { days: 20, never: false });
+  assert.equal(L.backupReminder({ ...old, backupSnoozed: '2026-09-24T09:00' }, today), null, 'Later holds for a week');
+  assert.deepEqual(L.backupReminder({ ...old, backupSnoozed: '2026-09-23T09:00' }, today), { days: 14, never: true });
+});
+
 test('readBackup refuses files that are not this app\'s diary', () => {
   assert.deepEqual(L.readBackup('{"hello":"world"}'), { ok: false, reason: 'unreadable' });
   assert.deepEqual(L.readBackup(''), { ok: false, reason: 'unreadable' });
@@ -657,8 +670,9 @@ test('readState fills missing fields without dropping entries or unknown fields'
 test('normalizeState repairs bad field types and is idempotent', () => {
   const s = L.normalizeState({
     v: 1, onboarded: 'yes', babyName: 7, settings: { windowHours: 30, hiddenTags: 'corn' },
-    meals: {}, dismissed: null, lastBackup: 'yesterday',
+    meals: {}, dismissed: null, lastBackup: 'yesterday', backupSnoozed: 'soon',
   });
+  assert.equal(s.backupSnoozed, null);
   assert.equal(s.settings.windowHours, 24);
   assert.deepEqual(s.settings.hiddenTags, []);
   assert.deepEqual(s.meals, []);

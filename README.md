@@ -10,34 +10,42 @@ Live at https://cjmerc39.github.io/food-diary/. Add it to the Home Screen from
 that address before logging real data: only the installed copy is exempt from
 Safari's storage eviction, and browser and Home Screen copies don't share data.
 
+**Status:** v1.0 is complete (tag `v1.0`, build 5). Suggested allergen tags for
+free-text meals are parked for a later phase; nothing in v1 depends on them.
+
 ## Privacy
 
 Nothing leaves the phone. The app makes no network calls with diary data: no
 accounts, analytics, web fonts, or APIs. The service worker caches the app's
 own files so it works offline; the diary itself lives only in localStorage.
-Export a JSON backup from More now and then, because deleting the Home Screen
-app deletes its data.
 
 ## Using it
 
-- **Today:** `+ food` and `+ symptom` on every tab; tap an entry to edit or
-  delete it; arrows, the date, or a swipe change the day.
-- **Trends:** daily symptom load with phase bands, per-category strips, and
-  the suspects list (correlation, not diagnosis).
-- **Phases:** eliminations and reintroductions; they drive the exposure
-  banners on Today and the 72-hour watch card.
-- **More > Report:** a print-styled summary for the pediatrician. Print, or
-  save a PDF from the print preview.
-- **More > Back up now:** saves the whole diary as a JSON file (the share sheet
-  on iPhone). **Restore** merges a backup in by id, or replaces the diary after
-  a confirm; both can be undone right after.
+- **Today:** `+ food` and `+ symptom` sit on every tab. A saved meal logs in
+  two taps, a loose diaper in four. Tap an entry to edit or delete it; arrows,
+  the date, or a swipe change the day. Every entry's time can be backdated.
+- **Trends:** daily symptom load with one track per phase food behind the
+  line, per-category strips, and the suspects list with its window editable
+  inline. Correlation, not diagnosis.
+- **Phases:** eliminations and reintroductions. They drive the exposure
+  banners on Today and the 72-hour reintroduction watch card.
+- **More > Report:** a print-styled summary for the pediatrician. Print (it
+  works from the Home Screen app), save a PDF from the print preview, or
+  **Share as a file** for a printable copy in Files, Mail, or AirDrop.
+- **More > Back up now:** saves the whole diary as a JSON file through the
+  share sheet. Once the diary has entries and two weeks pass without a backup,
+  Today shows a gentle reminder; **Later** hides it for a week.
+- **Restore:** from More, or from the welcome screen on a new phone. Merge adds
+  what the phone doesn't have (the phone's copy wins on a clash); Replace swaps
+  the diary after a confirm; both can be undone right after. Only this app's
+  backup files are accepted, and damaged entries are left out.
 
 ## Files
 
 | File | What it is |
 | --- | --- |
 | `index.html` | The whole app: markup, styles, UI code |
-| `logic.js` | Pure computation (time math, state loading, phases, tags), an ES module shared by the browser and the tests |
+| `logic.js` | Pure computation shared by the browser and the tests: time and day math, phases, meals and tags, symptom load, suspects, trends ranges, backups (reading, checking, merging), and the backup reminder |
 | `logic.test.js` | Tests for `logic.js` |
 | `sw.js` | Cache-first service worker for the app shell |
 | `manifest.json` | PWA manifest |
@@ -48,33 +56,39 @@ No framework, no build step, no npm dependencies.
 ## Develop
 
 ```sh
-node --test            # run the tests
+node --test            # run the logic tests
 node make-icons.js     # regenerate icons
 ```
 
 `index.html` loads `logic.js` as a module, which browsers refuse over
-`file://`. Preview through any local static server instead.
+`file://`. Preview through any local static server instead. Phone-sized browser
+checks (every flow in light and dark, storage safety, a simulated deploy) are
+kept outside this repo so it stays free of dependencies.
 
 ## Deploy
 
 Push to `main`; GitHub Pages serves the repo root. On every deploy, bump
 `VERSION` in `sw.js` and `BUILD` in `index.html` together. Installed copies
-then show "A new version is ready" with a Reload button.
+then show "A new version is ready" with a Reload button. Releases are tagged.
 
 ## Data safety rules
 
 - State lives under the localStorage key `food-diary:state`. All apps on
   `cjmerc39.github.io` share one localStorage and one Cache Storage, so this app
   only touches its own key prefix and its own `food-diary-shell-` caches. Never
-  call `localStorage.clear()`.
+  call `localStorage.clear()`; Clear all data removes only `food-diary:` keys.
 - `state.v` is the schema version. Migrations are additive. A build that finds
   a newer version refuses to open or write the diary rather than guess.
 - Unreadable saved data is set aside under `food-diary:state:unreadable:<time>`
   before a fresh diary starts.
+- Backup files carry `"app": "food-diary"`. Restores check every entry (safe
+  ids and tags, known categories, valid dates, no repeated ids) and leave out
+  anything damaged.
 
 ## Renaming
 
 The display name lives in `APP_NAME` in `index.html`. A few static spots can't
 read it and need a manual edit: `manifest.json` (`name`, `short_name`), and the
 `<title>` and `apple-mobile-web-app-title` tags in `index.html`. Do not change
-`STORE_KEY` or the cache `PREFIX`: renaming must not orphan saved diaries.
+`STORE_KEY`, `APP_ID`, or the cache `PREFIX`: renaming must not orphan saved
+diaries or make old backups unreadable.

@@ -548,6 +548,23 @@ export function mergeStates(current, incoming) {
   return { state: out, added };
 }
 
+export const BACKUP_DUE_DAYS = 14;
+export const BACKUP_SNOOZE_DAYS = 7;
+
+// The gentle backup reminder on Today. It waits until the diary has food or
+// symptom entries and two weeks have passed since the last backup (or, with no
+// backup yet, since the first entry), and stays away for a week after "Later".
+// Returns null, or { days, never } for the reminder's wording.
+export function backupReminder(state, today) {
+  const first = firstEntryDay(state);
+  if (!first) return null;
+  const never = !isTs(state.lastBackup);
+  const days = daysBetween(never ? first : dayKey(state.lastBackup), today);
+  if (days < BACKUP_DUE_DAYS) return null;
+  if (isTs(state.backupSnoozed) && daysBetween(dayKey(state.backupSnoozed), today) < BACKUP_SNOOZE_DAYS) return null;
+  return { days, never };
+}
+
 export const APP_ID = 'food-diary';
 const SAFE_ID = /^[\w-]{1,64}$/;
 const SAFE_TAG = /^[a-z0-9-]{1,40}$/;
@@ -683,6 +700,7 @@ export function freshState() {
     phases: [],
     dismissed: [],      // exposure banner keys ("eventId:tag") the parent closed
     lastBackup: null,   // timestamp of the last export
+    backupSnoozed: null, // when the parent last tapped "Later" on the backup reminder
   };
 }
 
@@ -726,6 +744,7 @@ export function normalizeState(s) {
   }
   if (typeof out.babyName !== 'string') out.babyName = '';
   if (out.lastBackup != null && !isTs(out.lastBackup)) out.lastBackup = null;
+  if (out.backupSnoozed != null && !isTs(out.backupSnoozed)) out.backupSnoozed = null;
   // A diary that already holds entries has clearly been set up.
   out.onboarded = out.onboarded === true ||
     out.foodLog.length + out.symptomLog.length + out.phases.length > 0;
