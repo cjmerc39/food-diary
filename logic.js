@@ -354,10 +354,27 @@ export function dayGlance(state, day) {
 export function dayRest({ isToday, hour, entries, symptoms }) {
   if (symptoms > 0) return { mark: 'default', line: null, still: true };
   if (isToday) {
-    const mark = hour >= 22 || hour < 5 ? 'moon' : hour < 11 ? 'sun' : 'default';
-    return { mark, line: entries ? null : 'today-empty', still: false };
+    return { mark: skyMark(hour) || 'default', line: entries ? null : 'today-empty', still: false };
   }
   return entries ? { mark: 'leaf', line: 'no-symptoms', still: false } : { mark: 'default', line: 'past-empty', still: false };
+}
+
+// The sky's mark for the hour: a moon from 10pm to 5am, a sun until 11am, otherwise none.
+export function skyMark(hour) {
+  return hour >= 22 || hour < 5 ? 'moon' : hour < 11 ? 'sun' : null;
+}
+
+// Which entrance the launch welcome plays, picked at random per cold launch:
+// the drop falls into the bowl, steam rises from the empty bowl, the empty bowl
+// rocks and settles, or the moon or sun rises behind it (only in that mark's
+// hours). `mark` is the shape above the bowl.
+//   { variant: 'drop' | 'steam' | 'wobble' | 'rise', mark: 'default' | 'none' | 'moon' | 'sun' }
+export const WELCOME_VARIANTS = ['drop', 'steam', 'wobble', 'rise'];
+export function welcomeVariant(hour, random = Math.random()) {
+  const sky = skyMark(hour);
+  const pool = sky ? WELCOME_VARIANTS : WELCOME_VARIANTS.filter((v) => v !== 'rise');
+  const variant = pool[Math.min(pool.length - 1, Math.max(0, Math.floor(random * pool.length)))];
+  return { variant, mark: variant === 'rise' ? sky : variant === 'drop' ? 'default' : 'none' };
 }
 
 // Every food event carrying the tag, oldest first. Possibly-hidden counts half.

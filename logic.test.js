@@ -316,6 +316,29 @@ test('dayRest keeps symptom days plain and still, and reads the clock today', ()
   assert.deepEqual(past(4, 2), plainStill, 'no leaf beside symptom data');
 });
 
+test('welcomeVariant picks one of four entrances; the rise only in the moon or sun hours', () => {
+  const at = (hour, random) => L.welcomeVariant(hour, random);
+  assert.deepEqual(at(14, 0), { variant: 'drop', mark: 'default' });
+  assert.deepEqual(at(14, 0.4), { variant: 'steam', mark: 'none' }, 'steam rises from the empty bowl');
+  assert.deepEqual(at(14, 0.9), { variant: 'wobble', mark: 'none' });
+  assert.deepEqual(at(14, 0.8), { variant: 'wobble', mark: 'none' }, 'an afternoon launch never rises');
+  assert.deepEqual(at(23, 0.8), { variant: 'rise', mark: 'moon' });
+  assert.deepEqual(at(22, 0.99), { variant: 'rise', mark: 'moon' });
+  assert.deepEqual(at(4, 0.8), { variant: 'rise', mark: 'moon' });
+  assert.deepEqual(at(5, 0.8), { variant: 'rise', mark: 'sun' });
+  assert.deepEqual(at(7, 0.8), { variant: 'rise', mark: 'sun' });
+  assert.deepEqual(at(10, 0.8), { variant: 'rise', mark: 'sun' });
+  assert.deepEqual(at(11, 0.8), { variant: 'wobble', mark: 'none' }, '11am is past the sun hours');
+  assert.deepEqual(at(21, 0.99), { variant: 'wobble', mark: 'none' });
+  assert.deepEqual(at(23, 0.1), { variant: 'drop', mark: 'default' }, 'in the moon hours the other three still play');
+  assert.equal(at(23, 1).variant, 'rise', 'a random of exactly 1 still lands in the pool');
+  const seen = new Set();
+  for (let i = 0; i < 300; i++) seen.add(L.welcomeVariant(23).variant);
+  assert.deepEqual([...seen].sort(), ['drop', 'rise', 'steam', 'wobble'], 'over many launches every entrance turns up');
+  for (let i = 0; i < 300; i++) assert.notEqual(L.welcomeVariant(14).variant, 'rise');
+  assert.deepEqual([22, 4, 5, 10, 11, 21].map(L.skyMark), ['moon', 'moon', 'sun', 'sun', null, null]);
+});
+
 test('exposure banners: eaten during an elimination, last 72 hours, one per exposure', () => {
   const now = '2026-09-13T12:00';
   const s = diary({

@@ -38,6 +38,9 @@ own files so it works offline; the diary itself lives only in localStorage.
 - **More > Back up now:** saves the whole diary as a JSON file through the
   share sheet. Once the diary has entries and two weeks pass without a backup,
   Today shows a gentle reminder; **Later** hides it for a week.
+- **More > Settings > Appearance:** System (follows the phone's Light or Dark
+  setting), Light, or Dark. Kept on the phone under its own key, so it's not
+  part of the diary or its backups.
 - **Restore:** from More, or from the welcome screen on a new phone. Merge adds
   what the phone doesn't have (the phone's copy wins on a clash); Replace swaps
   the diary after a confirm; both can be undone right after. Only this app's
@@ -50,7 +53,10 @@ own files so it works offline; the diary itself lives only in localStorage.
   on quiet days (a moon late at night, a sun in the morning, a leaf on a past
   day with food and no symptoms), while a sparse day with symptoms shows only
   the plain mark, at rest. A short welcome plays once per session at launch,
-  and any tap skips it. Everything honors Reduce Motion.
+  one of four entrances picked at random (the drop falls into the bowl, steam
+  rises from the empty bowl, the empty bowl rocks and settles, or the moon or
+  sun rises behind it during that mark's hours), and any tap skips it.
+  Everything honors Reduce Motion.
 
 ## Files
 

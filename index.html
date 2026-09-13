@@ -15,6 +15,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Food Diary">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<script>/* A chosen appearance (More > Settings) applies before the first paint; see applyTheme. */
+try{var t=localStorage.getItem('food-diary:theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
 <style>
 /* ---- tokens: "soft paper" light, low-glare true dark ------------------------ */
 :root{
@@ -31,9 +33,13 @@
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --round:ui-rounded,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   --tabs-h:58px; --act-h:64px;
+  color-scheme:light;
 }
+/* Dark follows the phone unless Appearance (More > Settings) forces light or
+   dark through data-theme on <html>. The two dark blocks must stay identical;
+   contrast.mjs checks that. */
 @media (prefers-color-scheme: dark){
-  :root{
+  :root:not([data-theme="light"]){
     --bg:#0e0d0c; --card:#181614; --sunk:#221f1c; --line:#2e2a26; --grab:#48423c;
     --ink:#e3dace; --ink2:#a59b8f; --ink3:#7b7268;
     --food:#bd7659; --food-on:#1a110d; --food-soft:#2f211b; --food-ink:#dca088;
@@ -42,7 +48,19 @@
     --band-0:#3987e5; --band-1:#d95926; --band-2:#199e70; --band-3:#c98500;
     --band-4:#d55181; --band-5:#008300; --band-6:#9085e9; --band-7:#e66767; --sun:#b98a36;
     --scrim:rgba(0,0,0,.62); --shadow:0 -8px 32px rgba(0,0,0,.6);
+    color-scheme:dark;
   }
+}
+:root[data-theme="dark"]{
+    --bg:#0e0d0c; --card:#181614; --sunk:#221f1c; --line:#2e2a26; --grab:#48423c;
+    --ink:#e3dace; --ink2:#a59b8f; --ink3:#7b7268;
+    --food:#bd7659; --food-on:#1a110d; --food-soft:#2f211b; --food-ink:#dca088;
+    --sym:#579891; --sym-on:#0b1514; --sym-soft:#172826; --sym-ink:#8bc0ba;
+    --danger:#cf6e5c; --danger-on:#1a0f0c; --danger-soft:#2e1916; --primary:#c8beb1; --primary-on:#14120f;
+    --band-0:#3987e5; --band-1:#d95926; --band-2:#199e70; --band-3:#c98500;
+    --band-4:#d55181; --band-5:#008300; --band-6:#9085e9; --band-7:#e66767; --sun:#b98a36;
+    --scrim:rgba(0,0,0,.62); --shadow:0 -8px 32px rgba(0,0,0,.6);
+    color-scheme:dark;
 }
 
 /* ---- app shell ----------------------------------------------------------------
@@ -270,7 +288,8 @@ svg{display:block;flex:none}
   padding:calc(28px + env(safe-area-inset-top)) 22px 20px}
 .ob-body h1{margin:6px 0 12px;font:700 32px/1.15 var(--round);letter-spacing:-.01em}
 .ob-logo{width:72px;height:72px;border-radius:18px;margin-bottom:22px;box-shadow:0 2px 10px rgba(70,50,30,.12)}
-@media (prefers-color-scheme: dark){.ob-logo{filter:brightness(.78)}}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .ob-logo{filter:brightness(.78)}}
+:root[data-theme="dark"] .ob-logo{filter:brightness(.78)}
 .field{display:block;margin-top:28px}
 .field > span{display:block;margin-bottom:8px;font-weight:600}
 .field + .fine{margin-top:8px}
@@ -344,6 +363,8 @@ svg{display:block;flex:none}
   background:var(--danger-soft);color:var(--danger);font-weight:600;font-size:16px}
 .caution svg{width:22px;height:22px;margin-top:1px}
 .seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.seg.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.row-block .seg{margin:10px 0 4px}
 .seg button{min-height:52px;border-radius:14px;background:var(--sunk);font-weight:600;font-size:17px}
 .seg button[aria-pressed="true"]{background:var(--primary);color:var(--primary-on)}
 .foot-row{display:grid;grid-template-columns:1fr 2fr;gap:10px}
@@ -502,23 +523,37 @@ body[data-screen="onboard"] #toast,body[data-screen="blocked"] #toast{bottom:cal
 
 /* ---- launch welcome ---------------------------------------------------------------
    Once per session, over an app that is already live underneath (taps pass
-   through). The drop falls into the bowl, the bowl settles, and it fades out:
-   about a second. Reduced motion: a still mark that simply fades. */
+   through). One of four entrances, picked at random (welcomeVariant): the drop
+   falls into the bowl; steam rises from the empty bowl; the bowl rocks and
+   settles like one set down on a counter; or the moon or sun comes up behind
+   it. About a second,
+   then it fades out. Reduced motion: a still mark that simply fades. */
 .welcome{position:absolute;inset:0;z-index:50;display:grid;place-items:center;background:var(--bg);pointer-events:none;transition:opacity .3s ease}
 .welcome.out{opacity:0}
 .welcome .mark{width:104px;height:103px}
 @keyframes welcome-drop{0%{opacity:0;transform:translateY(-170%)}30%{opacity:1}100%{opacity:1;transform:none}}
 @keyframes welcome-bowl{35%{transform:scaleY(.9)}75%{transform:scaleY(1.02)}}
-.welcome .mark-top{animation:welcome-drop .5s cubic-bezier(.55,0,.8,.3) both}
-.welcome .mark-bowl{animation:welcome-bowl .32s .46s ease-out both}
+.welcome[data-welcome="drop"] .mark-top{animation:welcome-drop .5s cubic-bezier(.55,0,.8,.3) both}
+.welcome[data-welcome="drop"] .mark-bowl{animation:welcome-bowl .32s .46s ease-out both}
+.mark-steam path{fill:none;stroke:var(--ink3);stroke-width:2.4;stroke-linecap:round;opacity:0}
+@keyframes welcome-steam{0%{opacity:0;transform:translateY(4px)}35%{opacity:.7}100%{opacity:0;transform:translateY(-14px)}}
+.welcome[data-welcome="steam"] .mark-steam path{animation:welcome-steam .8s ease-out both}
+.welcome[data-welcome="steam"] .mark-steam path:nth-child(2){animation-duration:.7s;animation-delay:.14s}
+@keyframes welcome-wobble{0%{transform:translateY(-10px) rotate(0)}14%{transform:translateY(0) rotate(-6deg)}38%{transform:translateY(0) rotate(5deg)}
+  60%{transform:translateY(0) rotate(-3deg)}80%{transform:translateY(0) rotate(1.5deg)}100%{transform:translateY(0) rotate(0)}}
+.welcome[data-welcome="wobble"] .mark-bowl{animation:welcome-wobble .9s cubic-bezier(.3,.5,.4,1) both}
+@keyframes welcome-rise{from{transform:translateY(32px)}}   /* starts hidden behind the bowl */
+.welcome[data-welcome="rise"] .mark-top{animation:welcome-rise .85s cubic-bezier(.25,.6,.3,1) both}
 @media (prefers-reduced-motion: reduce){
   .welcome{transition-duration:.35s!important}
-  .welcome .mark-top,.welcome .mark-bowl{animation:none!important}
+  .welcome .mark-top,.welcome .mark-bowl,.welcome .mark-steam path{animation:none!important}
 }
 
-/* The printed handout: always the light palette, only the report, full length. */
+/* The printed handout: always the light palette, only the report, full length.
+   :root:root outweighs both dark blocks above, forced or not. */
 @media print{
-  :root{
+  :root:root{
+    color-scheme:light;
     --bg:#ffffff; --card:#ffffff; --sunk:#f2ede4; --line:#ddd3c7; --ink:#1f1b17; --ink2:#564e45; --ink3:#8a8075;
     --sym:#34766f; --danger:#a33b2c;
     --band-0:#2a78d6; --band-1:#eb6834; --band-2:#1baf7a; --band-3:#eda100;
@@ -568,7 +603,7 @@ import {
   symptomMissing, symptomFields, dayEntries, exposureBanners, pruneDismissed, reintroWatches,
   standaloneHeight, LOAD_CATS, WINDOW_CHOICES, TREND_RANGES, daysBetween, slugify,
   trendDays, trendSeries, phaseBands, phaseTagSlots, suspects, rangeEntries,
-  addCustomTag, tagInUse, mergeStates, readBackup, APP_ID, backupReminder, dayGlance, dayRest,
+  addCustomTag, tagInUse, mergeStates, readBackup, APP_ID, backupReminder, dayGlance, dayRest, welcomeVariant,
 } from './logic.js';
 
 // ---- identity ------------------------------------------------------------------
@@ -577,7 +612,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 9;
+const BUILD = 10;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -942,11 +977,14 @@ const MARK_TOPS = {
   moon: '<path d="M48.5 20.1A11 11 0 1 0 60.3 34.9A9.5 9.5 0 0 1 48.5 20.1Z" style="fill:var(--sym)"/>',
   sun: '<circle cx="50" cy="32" r="6.5" style="fill:var(--sun)"/><path d="M59.5 32H63M56.7 38.7l2.5 2.5M50 41.5V45M43.3 38.7l-2.5 2.5M40.5 32H37M43.3 25.3l-2.5-2.5M50 22.5V19M56.7 25.3l2.5-2.5" style="fill:none;stroke:var(--sun);stroke-width:2.4;stroke-linecap:round"/>',
   leaf: '<path d="M49 43c-8-5-9-16 3-26 8 9 7 20-3 26z" style="fill:var(--sym)"/><path d="M49.6 41L51.8 21" style="fill:none;stroke:var(--bg);stroke-width:1.5;stroke-linecap:round"/>',
+  none: '',   // the bowl alone
 };
 const MARK_BOWL = '<rect x="19" y="51.5" width="62" height="7" rx="3.5" style="fill:var(--food)"/><path d="M22.5 55A27.5 23.5 0 0 0 77.5 55Z" style="fill:var(--food)"/>';
-const markSvg = (variant = 'default', cls = '') =>
+// Two wisps of steam above the rim of the empty bowl (the welcome only).
+const MARK_STEAM = '<g class="mark-steam"><path d="M42.5 50c-2.5-3.5 2.5-6.5 0-10s2.5-6.5 0-10"/><path d="M57.5 50c-2.5-3.5 2.5-6.5 0-10s2.5-6.5 0-10"/></g>';
+const markSvg = (variant = 'default', cls = '', extra = '') =>
   `<svg class="mark${cls ? ` ${cls}` : ''}" data-variant="${variant}" viewBox="16 14 68 67" aria-hidden="true">`
-  + `<g class="mark-top">${MARK_TOPS[variant]}</g><g class="mark-bowl">${MARK_BOWL}</g></svg>`;
+  + `<g class="mark-top">${MARK_TOPS[variant]}</g><g class="mark-bowl">${MARK_BOWL}</g>${extra}</svg>`;
 const smallMark = (x, y) => `<g transform="translate(${x} ${y}) scale(.42)">${MARK_TOPS.default}${MARK_BOWL}</g>`;
 
 // The diary kept on this phone, for the privacy screen in setup.
@@ -1525,6 +1563,11 @@ function viewMore() {
       <div class="row row-block">
         <span class="row-main">Suspects window<span class="row-sub">How many hours after eating a food count as "followed by symptoms"</span></span>
         ${windowChipsHtml(S.settings.windowHours)}
+      </div>
+      <div class="row row-block">
+        <span class="row-main">Appearance<span class="row-sub">System follows your phone's Light or Dark setting</span></span>
+        <div class="seg three" role="group" aria-label="Appearance">${THEMES.map(([id, label]) =>
+          `<button data-act="theme" data-theme="${id}" aria-pressed="${readTheme() === id}">${label}</button>`).join('')}</div>
       </div>
     </div>
     <h3 class="section-label">Danger zone</h3>
@@ -2822,6 +2865,44 @@ function spring(key) {
   el.addEventListener('animationend', () => el.classList.remove(cls), { once: true });
 }
 
+// ---- appearance ---------------------------------------------------------------------------
+// System (the phone's Light or Dark setting), light, or dark. Kept per phone
+// under its own key, so it is neither part of the diary nor of its backups; a
+// script in <head> applies it before the first paint.
+const THEME_KEY = `${STORE_PREFIX}theme`;
+const THEMES = [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']];
+const THEME_BG = { light: '#f6f1e8', dark: '#0e0d0c' };
+
+function readTheme() {
+  try {
+    const t = localStorage.getItem(THEME_KEY);
+    return THEMES.some(([id]) => id === t) ? t : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+function setTheme(mode) {
+  try {
+    if (mode === 'system') localStorage.removeItem(THEME_KEY);
+    else localStorage.setItem(THEME_KEY, mode);
+  } catch {
+    // The choice still applies until the app is closed.
+  }
+  applyTheme(mode);
+}
+
+function applyTheme(mode = readTheme()) {
+  const root = document.documentElement;
+  if (mode === 'system') delete root.dataset.theme;
+  else root.dataset.theme = mode;
+  // The status bar and browser chrome follow the theme in use; under System,
+  // each meta goes back to its own scheme.
+  for (const m of document.querySelectorAll('meta[name="theme-color"]')) {
+    m.content = THEME_BG[mode === 'system' ? (m.media.includes('dark') ? 'dark' : 'light') : mode];
+  }
+}
+
 // ---- launch welcome ----------------------------------------------------------------------
 // On the first launch of a session the mark plays a short entrance over an app
 // that is already live underneath: any tap or key goes straight through and
@@ -2839,10 +2920,12 @@ function firstLaunchThisSession() {
 }
 
 function playWelcome() {
+  const { variant, mark } = welcomeVariant(new Date().getHours());
   const el = document.createElement('div');
   el.className = 'welcome';
+  el.dataset.welcome = variant;
   el.setAttribute('aria-hidden', 'true');
-  el.innerHTML = markSvg('default');
+  el.innerHTML = markSvg(mark, '', variant === 'steam' ? MARK_STEAM : '');
   document.body.append(el);
   let timer = 0;
   function stopListening() {
@@ -2861,7 +2944,7 @@ function playWelcome() {
     stopListening();
     el.classList.add('out');
     setTimeout(() => el.remove(), 400);
-  }, still ? 300 : 820);
+  }, still ? 300 : 860);
 }
 
 // ---- events --------------------------------------------------------------------------------
@@ -2894,6 +2977,7 @@ const ACTIONS = {
   'import': () => $('#import-file').click(),
   'edit-name': () => openNameSheet(),
   'edit-tags': () => openTagsSheet(),
+  theme: (el) => { setTheme(el.dataset.theme); render(); },
   'clear-all': () => clearAllData(),
   'backup-now': () => exportBackup(),
   'backup-later': () => {
@@ -3043,6 +3127,7 @@ document.addEventListener('visibilitychange', () => {
 // ---- boot ------------------------------------------------------------------------------------
 function boot() {
   document.title = APP_NAME;
+  applyTheme();
   fitShell();
   addEventListener('resize', fitShell);
   new ResizeObserver(fitDayRest).observe($('#view'));
