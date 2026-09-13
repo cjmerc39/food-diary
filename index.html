@@ -573,7 +573,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 7;
+const BUILD = 8;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -974,8 +974,8 @@ function viewToday() {
   const rows = dayEntries(S, day);
   const list = rows.length ? `<ul class="timeline">${rows.map(entryHtml).join('')}</ul>` : '';
   // The leftover space under the day (see dayRest): a mark, and a line where it
-  // helps, on quiet days; nothing on days with symptoms. The space collapses once
-  // the entries fill the screen, and a container query hides the mark.
+  // helps. On days with symptoms the mark is plain and at rest. The space
+  // collapses once the entries fill the screen, and fitDayRest hides the mark.
   const rest = dayRest({
     isToday: day === today, hour: new Date().getHours(),
     entries: rows.length, symptoms: rows.filter((r) => r.kind === 'symptom').length,
@@ -985,9 +985,10 @@ function viewToday() {
     'past-empty': `Nothing logged on ${fmtDate(`${day}T00:00`, { weekday: true })}`,
     'no-symptoms': 'No symptoms logged this day',
   }[rest.line];
-  const restHtml = !rest.mark ? ''
-    : line ? `<div class="day-rest has-line">${markSvg(rest.mark, 'day-mark settle')}<p>${esc(line)}</p></div>`
-      : `<div class="day-rest" aria-hidden="true">${markSvg(rest.mark, 'day-mark settle')}</div>`;
+  const mark = markSvg(rest.mark, rest.still ? 'day-mark' : 'day-mark settle');
+  const restHtml = line
+    ? `<div class="day-rest has-line">${mark}<p>${esc(line)}</p></div>`
+    : `<div class="day-rest" aria-hidden="true">${mark}</div>`;
   return `<div class="dayview">${glanceHtml(day)}${cards}${list}${restHtml}</div>`;
 }
 

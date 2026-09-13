@@ -45,12 +45,12 @@ own files so it works offline; the diary itself lives only in localStorage.
 - **Motion:** controls give a small spring on tap (a calm settle instead, with
   no bounce, for severity 3, watery stool, and blood), sheets ease in and out,
   saves draw a check in the toast, day paging slides with the swipe, and the
-  Trends line draws in on each range's first view. The bowl-and-drop mark stays
-  in chrome, never beside symptom data: it settles in food-log toasts and on
-  quiet days (a moon late at night, a sun in the morning, a leaf on a past day
-  with food and no symptoms, nothing on a day with symptoms), and plays a short
-  welcome once per session at launch that any tap skips. Everything honors
-  Reduce Motion.
+  Trends line draws in on each range's first view. Personality and motion stay
+  away from symptom data: the bowl-and-drop mark settles in food-log toasts and
+  on quiet days (a moon late at night, a sun in the morning, a leaf on a past
+  day with food and no symptoms), while a sparse day with symptoms shows only
+  the plain mark, at rest. A short welcome plays once per session at launch,
+  and any tap skips it. Everything honors Reduce Motion.
 
 ## Files
 

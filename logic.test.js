@@ -296,21 +296,24 @@ test('dayGlance counts a day\'s entries and load', () => {
   assert.deepEqual(L.dayGlance(diary(), '2026-09-12'), { load: 0, entries: 0, food: 0, symptoms: 0, phases: [] });
 });
 
-test('dayRest keeps the mark off symptom days and reads the clock today', () => {
+test('dayRest keeps symptom days plain and still, and reads the clock today', () => {
   const today = (hour, entries = 0, symptoms = 0) => L.dayRest({ isToday: true, hour, entries, symptoms });
-  assert.deepEqual(today(23), { mark: 'moon', line: 'today-empty' });
+  const plainStill = { mark: 'default', line: null, still: true };
+  assert.deepEqual(today(23), { mark: 'moon', line: 'today-empty', still: false });
   assert.equal(today(22).mark, 'moon');
   assert.equal(today(4).mark, 'moon');
   assert.equal(today(5).mark, 'sun');
   assert.equal(today(10).mark, 'sun');
   assert.equal(today(11).mark, 'default');
   assert.equal(today(21).mark, 'default');
-  assert.deepEqual(today(14, 2), { mark: 'default', line: null }, 'food only: the mark, no line');
-  assert.deepEqual(today(14, 3, 1), { mark: null, line: null }, 'never beside symptom data');
+  assert.deepEqual(today(14, 2), { mark: 'default', line: null, still: false }, 'food only: the mark settles, no line');
+  assert.deepEqual(today(14, 3, 1), plainStill, 'beside symptom data: the plain mark at rest');
+  assert.deepEqual(today(23, 3, 1), plainStill, 'no moon beside symptom data');
+  assert.deepEqual(today(7, 1, 1), plainStill, 'no sun beside symptom data');
   const past = (entries, symptoms) => L.dayRest({ isToday: false, hour: 14, entries, symptoms });
-  assert.deepEqual(past(0, 0), { mark: 'default', line: 'past-empty' });
-  assert.deepEqual(past(2, 0), { mark: 'leaf', line: 'no-symptoms' });
-  assert.deepEqual(past(4, 2), { mark: null, line: null });
+  assert.deepEqual(past(0, 0), { mark: 'default', line: 'past-empty', still: false });
+  assert.deepEqual(past(2, 0), { mark: 'leaf', line: 'no-symptoms', still: false });
+  assert.deepEqual(past(4, 2), plainStill, 'no leaf beside symptom data');
 });
 
 test('exposure banners: eaten during an elimination, last 72 hours, one per exposure', () => {

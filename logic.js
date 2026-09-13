@@ -345,18 +345,19 @@ export function dayGlance(state, day) {
   };
 }
 
-// What sits in a day's leftover space. Personality stays away from symptom
-// data, so a day with symptoms gets nothing; today's mark reads the clock
-// (moon late at night, sun in the morning); a past day with food and no
-// symptoms gets a leaf; an empty past day keeps the plain mark.
-//   { mark: 'default' | 'moon' | 'sun' | 'leaf' | null, line: 'today-empty' | 'past-empty' | 'no-symptoms' | null }
+// What sits in a day's leftover space. No personality or motion beside symptom
+// data, so a day with symptoms keeps only the plain mark, at rest. Otherwise
+// today's mark reads the clock (moon late at night, sun in the morning), a past
+// day with food and no symptoms gets a leaf, an empty past day keeps the plain
+// mark, and the mark settles in when shown.
+//   { mark: 'default' | 'moon' | 'sun' | 'leaf', line: 'today-empty' | 'past-empty' | 'no-symptoms' | null, still: boolean }
 export function dayRest({ isToday, hour, entries, symptoms }) {
-  if (symptoms > 0) return { mark: null, line: null };
+  if (symptoms > 0) return { mark: 'default', line: null, still: true };
   if (isToday) {
     const mark = hour >= 22 || hour < 5 ? 'moon' : hour < 11 ? 'sun' : 'default';
-    return { mark, line: entries ? null : 'today-empty' };
+    return { mark, line: entries ? null : 'today-empty', still: false };
   }
-  return entries ? { mark: 'leaf', line: 'no-symptoms' } : { mark: 'default', line: 'past-empty' };
+  return entries ? { mark: 'leaf', line: 'no-symptoms', still: false } : { mark: 'default', line: 'past-empty', still: false };
 }
 
 // Every food event carrying the tag, oldest first. Possibly-hidden counts half.
