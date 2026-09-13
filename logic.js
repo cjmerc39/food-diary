@@ -345,6 +345,20 @@ export function dayGlance(state, day) {
   };
 }
 
+// What sits in a day's leftover space. Personality stays away from symptom
+// data, so a day with symptoms gets nothing; today's mark reads the clock
+// (moon late at night, sun in the morning); a past day with food and no
+// symptoms gets a leaf; an empty past day keeps the plain mark.
+//   { mark: 'default' | 'moon' | 'sun' | 'leaf' | null, line: 'today-empty' | 'past-empty' | 'no-symptoms' | null }
+export function dayRest({ isToday, hour, entries, symptoms }) {
+  if (symptoms > 0) return { mark: null, line: null };
+  if (isToday) {
+    const mark = hour >= 22 || hour < 5 ? 'moon' : hour < 11 ? 'sun' : 'default';
+    return { mark, line: entries ? null : 'today-empty' };
+  }
+  return entries ? { mark: 'leaf', line: 'no-symptoms' } : { mark: 'default', line: 'past-empty' };
+}
+
 // Every food event carrying the tag, oldest first. Possibly-hidden counts half.
 export function exposuresOf(foodLog, tag) {
   const out = [];

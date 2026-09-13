@@ -26,6 +26,7 @@
   /* phase bands: the validated categorical palette, slots follow each food */
   --band-0:#2a78d6; --band-1:#eb6834; --band-2:#1baf7a; --band-3:#eda100;
   --band-4:#e87ba4; --band-5:#008300; --band-6:#4a3aa7; --band-7:#e34948;
+  --sun:#d9982c;
   --scrim:rgba(46,41,36,.4); --shadow:0 -8px 32px rgba(70,50,30,.14);
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --round:ui-rounded,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
@@ -39,7 +40,7 @@
     --sym:#579891; --sym-on:#0b1514; --sym-soft:#172826; --sym-ink:#8bc0ba;
     --danger:#cf6e5c; --danger-on:#1a0f0c; --danger-soft:#2e1916; --primary:#c8beb1; --primary-on:#14120f;
     --band-0:#3987e5; --band-1:#d95926; --band-2:#199e70; --band-3:#c98500;
-    --band-4:#d55181; --band-5:#008300; --band-6:#9085e9; --band-7:#e66767;
+    --band-4:#d55181; --band-5:#008300; --band-6:#9085e9; --band-7:#e66767; --sun:#b98a36;
     --scrim:rgba(0,0,0,.62); --shadow:0 -8px 32px rgba(0,0,0,.6);
   }
 }
@@ -136,6 +137,20 @@ svg{display:block;flex:none}
   font-size:17px;font-weight:600}
 .date.wide{display:block;width:100%;min-height:52px}
 
+/* ---- motion: feedback on controls ---------------------------------------------
+   Taps spring a little and a new selection settles instead of snapping. Anything
+   showing severity 3 or carrying a call-the-doctor note settles calmly instead,
+   with no bounce (see CALM_CONTROLS). Everything stays under about 300ms. */
+.chip,.opt,.cat,.seg button{transition:background-color .18s ease,border-color .18s ease,color .18s ease,transform .12s ease}
+.chip:active,.opt:active,.cat:active,.seg button:active{transform:scale(.96)}
+[data-sev="3"]:active,[data-stool="watery"]:active,[data-flag="blood"]:active{transform:none}
+@keyframes spring{0%{transform:scale(.94);filter:brightness(1.06)}60%{transform:scale(1.03)}100%{transform:none;filter:none}}
+@keyframes settle-calm{from{opacity:.7}to{opacity:1}}
+.spring:not(.switchrow),.switchrow.spring .switch{animation:spring .26s cubic-bezier(.3,.7,.4,1)}
+.settle-calm{animation:settle-calm .2s ease-out}
+@keyframes line-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@keyframes fade-in{from{opacity:0}}
+
 .empty{margin:36px 12px;text-align:center;color:var(--ink2)}
 .empty svg{width:56px;height:56px;margin:0 auto 14px;color:var(--ink3)}
 .empty h2{margin-bottom:6px;color:var(--ink);font:600 21px/1.3 var(--round)}
@@ -181,12 +196,23 @@ svg{display:block;flex:none}
 .glance-stats{display:grid;grid-template-columns:1fr 1.4fr;gap:12px;margin-top:10px;padding-top:12px;border-top:1px solid var(--line)}
 .glance-num{display:block;font:700 26px/1.1 var(--round)}
 .glance-label{display:block;margin-top:2px;color:var(--ink2);font-size:14px}
-.day-rest{flex:1 1 0;min-height:0;overflow:hidden;container-type:size;display:flex;flex-direction:column;
+.day-rest{flex:1 1 0;min-height:0;overflow:hidden;display:flex;flex-direction:column;
   align-items:center;justify-content:center;gap:14px;text-align:center}
-.day-rest.empty{min-height:56px}
+.day-rest.has-line{min-height:56px}
 .day-rest p{color:var(--ink2);font-size:17px}
-.day-mark{width:56px;height:52px;opacity:.8}
-@container (max-height: 120px){.day-mark{display:none}}
+/* The mark's top shape (drop, moon, sun, leaf) and bowl settle separately. */
+.mark{overflow:visible}
+.mark .mark-top,.mark .mark-bowl{transform-box:fill-box;transform-origin:50% 100%}
+@keyframes mark-top-in{from{opacity:0;transform:translateY(-40%)}}
+@keyframes mark-bowl-in{50%{transform:scaleY(.93)}}
+.mark.settle .mark-top{animation:mark-top-in .2s cubic-bezier(.3,.6,.4,1) both}
+.mark.settle .mark-bowl{animation:mark-bowl-in .14s .16s ease-out}
+.day-mark{width:58px;height:57px;opacity:.85}
+.illo{display:block;width:150px;height:auto;margin:4px auto 6px}
+.ob-illo{display:block;width:132px;height:auto;margin:0 0 8px -8px}
+.illo-lede{text-align:center;font-weight:600;overflow-wrap:anywhere}
+.illo-lede + .hint{text-align:center}
+.day-rest.tight .day-mark{display:none}   /* see fitDayRest */
 .timeline{list-style:none;display:grid;gap:10px}
 .entry{display:flex;align-items:flex-start;gap:12px;width:100%;padding:12px 14px;border-radius:18px;
   background:var(--card);border:1px solid var(--line);text-align:left}
@@ -211,11 +237,12 @@ svg{display:block;flex:none}
   background:var(--sym-soft);color:var(--sym-ink);font-size:14px;font-weight:600}
 .flag.alert{background:var(--danger-soft);color:var(--danger)}
 @media (prefers-reduced-motion: no-preference){
-  .dayanim-next{animation:day-next .22s ease-out}
-  .dayanim-prev{animation:day-prev .22s ease-out}
+  .dayanim-next{animation:day-next .26s cubic-bezier(.22,1,.36,1)}
+  .dayanim-prev{animation:day-prev .26s cubic-bezier(.22,1,.36,1)}
 }
-@keyframes day-next{from{opacity:.3;transform:translateX(28px)}}
-@keyframes day-prev{from{opacity:.3;transform:translateX(-28px)}}
+/* The new day arrives from the side the swipe pushed toward. */
+@keyframes day-next{from{opacity:.25;transform:translateX(44px)}}
+@keyframes day-prev{from{opacity:.25;transform:translateX(-44px)}}
 
 /* ---- phases --------------------------------------------------------------------- */
 .phase{display:block;width:100%;text-align:left}
@@ -341,6 +368,10 @@ svg{display:block;flex:none}
 .chart .value{fill:var(--ink);font-weight:600}
 .chart .band-label{font-size:10px;fill:var(--ink2)}
 .chart .cross{stroke:var(--ink2);stroke-width:1}
+/* First view of a range: the line draws in, its wash and labels fade up. */
+.chart.draw .line{stroke-dasharray:1;animation:line-draw .3s cubic-bezier(.3,.6,.3,1) both}
+.chart.draw .area{animation:fade-in .3s ease-out both}
+.chart.draw .dot,.chart.draw .value{animation:fade-in .16s .14s ease-out both}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;color:var(--ink2);font-size:14px}
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .swatch{display:inline-block;width:16px;height:10px;border-radius:3px;background:var(--sw)}
@@ -418,13 +449,14 @@ details[open].more-card > summary::after{transform:translateY(2px) rotate(-135de
 /* ---- overlays: sheets, dialogs, toast ----------------------------------------- */
 #layer{position:absolute;inset:0;z-index:20;pointer-events:none}
 #layer > *{pointer-events:auto}
-.scrim{position:absolute;inset:0;background:var(--scrim);opacity:0;transition:opacity .22s}
+.scrim{position:absolute;inset:0;background:var(--scrim);opacity:0;transition:opacity .24s ease}
 .scrim.in{opacity:1}
 .sheet{position:absolute;left:0;right:0;bottom:0;max-width:560px;margin:0 auto;
   max-height:calc(100% - 44px - env(safe-area-inset-top));display:flex;flex-direction:column;
   background:var(--card);border-radius:26px 26px 0 0;box-shadow:var(--shadow);
   padding-bottom:env(safe-area-inset-bottom);transform:translateY(100%);
-  transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+  transition:transform .28s cubic-bezier(.22,1,.36,1)}
+.sheet.closing{transition:transform .22s cubic-bezier(.4,0,.9,.6)}
 .sheet.in{transform:none}
 .sheet.dragging{transition:none}
 .grab{flex:none;display:grid;place-items:center;height:26px;touch-action:none}
@@ -453,9 +485,31 @@ body[data-screen="onboard"] #toast,body[data-screen="blocked"] #toast{bottom:cal
 #toast.in{opacity:1;transform:none;pointer-events:auto}
 #toast .toast-msg{flex:1;min-width:0;padding:4px 0;overflow-wrap:anywhere}
 #toast button{flex:none;min-height:44px;padding:0 14px;border-radius:10px;font-weight:700;color:var(--primary-on);background:rgba(128,128,128,.28)}
+.toast-check{flex:none;width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.toast-check path,.illo .check{stroke-dasharray:1;animation:line-draw .26s .06s cubic-bezier(.3,.7,.4,1) both}
+.toast-mark{position:relative;flex:none;width:30px;height:30px}
+.toast-mark .mark{display:block;width:30px;height:30px}
+.toast-badge{position:absolute;right:-5px;bottom:-3px;width:17px;height:17px;border-radius:50%;display:grid;place-items:center;background:var(--sym);color:var(--sym-on)}
+.toast-badge .toast-check{width:12px;height:12px;stroke-width:3.2}
 
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important}
+}
+
+/* ---- launch welcome ---------------------------------------------------------------
+   Once per session, over an app that is already live underneath (taps pass
+   through). The drop falls into the bowl, the bowl settles, and it fades out:
+   about a second. Reduced motion: a still mark that simply fades. */
+.welcome{position:absolute;inset:0;z-index:50;display:grid;place-items:center;background:var(--bg);pointer-events:none;transition:opacity .3s ease}
+.welcome.out{opacity:0}
+.welcome .mark{width:104px;height:103px}
+@keyframes welcome-drop{0%{opacity:0;transform:translateY(-170%)}30%{opacity:1}100%{opacity:1;transform:none}}
+@keyframes welcome-bowl{35%{transform:scaleY(.9)}75%{transform:scaleY(1.02)}}
+.welcome .mark-top{animation:welcome-drop .5s cubic-bezier(.55,0,.8,.3) both}
+.welcome .mark-bowl{animation:welcome-bowl .32s .46s ease-out both}
+@media (prefers-reduced-motion: reduce){
+  .welcome{transition-duration:.35s!important}
+  .welcome .mark-top,.welcome .mark-bowl{animation:none!important}
 }
 
 /* The printed handout: always the light palette, only the report, full length. */
@@ -510,7 +564,7 @@ import {
   symptomMissing, symptomFields, dayEntries, exposureBanners, pruneDismissed, reintroWatches,
   standaloneHeight, LOAD_CATS, WINDOW_CHOICES, TREND_RANGES, daysBetween, slugify,
   trendDays, trendSeries, phaseBands, phaseTagSlots, suspects, rangeEntries,
-  addCustomTag, tagInUse, mergeStates, readBackup, APP_ID, backupReminder, dayGlance,
+  addCustomTag, tagInUse, mergeStates, readBackup, APP_ID, backupReminder, dayGlance, dayRest,
 } from './logic.js';
 
 // ---- identity ------------------------------------------------------------------
@@ -519,7 +573,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 6;
+const BUILD = 7;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -770,6 +824,7 @@ function obDone() {
     </section>`;
   return `
   <div class="ob-body">
+    ${ILLO_PHONE}
     <p class="kicker">Step 3 of 3</p>
     <h1>You're all set</h1>
     ${install}
@@ -832,6 +887,7 @@ function render(anim = '') {
   $('#top').innerHTML = v.head;
   $('#view').innerHTML = v.html;
   if (anim) $('#view').firstElementChild?.classList.add(anim);
+  fitDayRest();
   for (const b of document.querySelectorAll('#tabs .tab')) {
     if (b.dataset.tab === U.tab) b.setAttribute('aria-current', 'page');
     else b.removeAttribute('aria-current');
@@ -874,26 +930,65 @@ function dayHeadHtml() {
     </div>`;
 }
 
-// The app's mark, drawn inline in the palette for the quiet space under a day.
-const DAY_MARK = '<svg class="day-mark" viewBox="16 17 68 64" aria-hidden="true">'
-  + '<path d="M50 20L56.9 32.8A7.8 7.8 0 1 1 43.1 32.8Z" style="fill:var(--sym)"/>'
-  + '<rect x="19" y="51.5" width="62" height="7" rx="3.5" style="fill:var(--food)"/>'
-  + '<path d="M22.5 55A27.5 23.5 0 0 0 77.5 55Z" style="fill:var(--food)"/></svg>';
+// ---- the mark and illustrations ------------------------------------------------------
+// Personality lives in chrome only: never beside symptom data. The bowl stays;
+// the shape above it varies (drop, moon, sun, leaf).
+const MARK_TOPS = {
+  default: '<path d="M50 20L56.9 32.8A7.8 7.8 0 1 1 43.1 32.8Z" style="fill:var(--sym)"/>',
+  moon: '<path d="M48.5 20.1A11 11 0 1 0 60.3 34.9A9.5 9.5 0 0 1 48.5 20.1Z" style="fill:var(--sym)"/>',
+  sun: '<circle cx="50" cy="32" r="6.5" style="fill:var(--sun)"/><path d="M59.5 32H63M56.7 38.7l2.5 2.5M50 41.5V45M43.3 38.7l-2.5 2.5M40.5 32H37M43.3 25.3l-2.5-2.5M50 22.5V19M56.7 25.3l2.5-2.5" style="fill:none;stroke:var(--sun);stroke-width:2.4;stroke-linecap:round"/>',
+  leaf: '<path d="M49 43c-8-5-9-16 3-26 8 9 7 20-3 26z" style="fill:var(--sym)"/><path d="M49.6 41L51.8 21" style="fill:none;stroke:var(--bg);stroke-width:1.5;stroke-linecap:round"/>',
+};
+const MARK_BOWL = '<rect x="19" y="51.5" width="62" height="7" rx="3.5" style="fill:var(--food)"/><path d="M22.5 55A27.5 23.5 0 0 0 77.5 55Z" style="fill:var(--food)"/>';
+const markSvg = (variant = 'default', cls = '') =>
+  `<svg class="mark${cls ? ` ${cls}` : ''}" data-variant="${variant}" viewBox="16 14 68 67" aria-hidden="true">`
+  + `<g class="mark-top">${MARK_TOPS[variant]}</g><g class="mark-bowl">${MARK_BOWL}</g></svg>`;
+const smallMark = (x, y) => `<g transform="translate(${x} ${y}) scale(.42)">${MARK_TOPS.default}${MARK_BOWL}</g>`;
+
+// The diary kept on this phone, for the privacy screen in setup.
+const ILLO_PHONE = `<svg class="ob-illo" viewBox="0 0 160 120" aria-hidden="true">
+  <ellipse cx="80" cy="111" rx="46" ry="5" style="fill:var(--sunk)"/>
+  <rect x="55" y="6" width="50" height="98" rx="11" style="fill:var(--card);stroke:var(--ink3);stroke-width:2.5"/>
+  <path d="M73 14.5h14" style="stroke:var(--ink3);stroke-width:2.5;stroke-linecap:round"/>
+  ${smallMark(59, 30)}
+  <path d="M68 76h24M68 84h16" style="stroke:var(--line);stroke-width:3;stroke-linecap:round"/>
+  <circle cx="106" cy="86" r="15" style="fill:var(--sym)"/>
+  <rect x="99" y="85" width="14" height="10.5" rx="2.2" style="fill:var(--sym-on)"/>
+  <path d="M101.5 85v-3a4.5 4.5 0 0 1 9 0v3" style="fill:none;stroke:var(--sym-on);stroke-width:2.2"/>
+</svg>`;
+
+// A saved backup file, for the backup-done confirmation.
+const ILLO_BACKUP = `<svg class="illo" viewBox="0 0 160 120" aria-hidden="true">
+  <ellipse cx="80" cy="111" rx="46" ry="5" style="fill:var(--sunk)"/>
+  <path d="M52 14a8 8 0 0 1 8-8h30l18 18v72a8 8 0 0 1-8 8H60a8 8 0 0 1-8-8z" style="fill:var(--card);stroke:var(--ink3);stroke-width:2.5;stroke-linejoin:round"/>
+  <path d="M90 6v12a6 6 0 0 0 6 6h12" style="fill:none;stroke:var(--ink3);stroke-width:2.5;stroke-linejoin:round"/>
+  ${smallMark(58, 26)}
+  <path d="M64 70h32M64 78h22" style="stroke:var(--line);stroke-width:3;stroke-linecap:round"/>
+  <circle cx="106" cy="90" r="15" style="fill:var(--sym)"/>
+  <path class="check" d="M99 90.5l4.8 4.8 9-9.6" pathLength="1" style="fill:none;stroke:var(--sym-on);stroke-width:3;stroke-linecap:round;stroke-linejoin:round"/>
+</svg>`;
 
 function viewToday() {
   const day = viewDay(), today = todayKey();
   const cards = day === today ? todayCardsHtml(nowTs()) : '';
   const rows = dayEntries(S, day);
   const list = rows.length ? `<ul class="timeline">${rows.map(entryHtml).join('')}</ul>` : '';
-  // The leftover space under the day: the mark and one line on an empty day,
-  // the mark alone on a sparse one, nothing once the entries fill the screen
-  // (the space collapses and a container query hides the mark).
-  const rest = rows.length
-    ? `<div class="day-rest" aria-hidden="true">${DAY_MARK}</div>`
-    : `<div class="day-rest empty">${DAY_MARK}<p>${day === today
-      ? 'Nothing logged yet today'
-      : `Nothing logged on ${esc(fmtDate(`${day}T00:00`, { weekday: true }))}`}</p></div>`;
-  return `<div class="dayview">${glanceHtml(day)}${cards}${list}${rest}</div>`;
+  // The leftover space under the day (see dayRest): a mark, and a line where it
+  // helps, on quiet days; nothing on days with symptoms. The space collapses once
+  // the entries fill the screen, and a container query hides the mark.
+  const rest = dayRest({
+    isToday: day === today, hour: new Date().getHours(),
+    entries: rows.length, symptoms: rows.filter((r) => r.kind === 'symptom').length,
+  });
+  const line = {
+    'today-empty': 'Nothing logged yet today',
+    'past-empty': `Nothing logged on ${fmtDate(`${day}T00:00`, { weekday: true })}`,
+    'no-symptoms': 'No symptoms logged this day',
+  }[rest.line];
+  const restHtml = !rest.mark ? ''
+    : line ? `<div class="day-rest has-line">${markSvg(rest.mark, 'day-mark settle')}<p>${esc(line)}</p></div>`
+      : `<div class="day-rest" aria-hidden="true">${markSvg(rest.mark, 'day-mark settle')}</div>`;
+  return `<div class="dayview">${glanceHtml(day)}${cards}${list}${restHtml}</div>`;
 }
 
 // A calm summary at the top of each day: who, what's running, and the day's
@@ -915,6 +1010,14 @@ function glanceHtml(day) {
       <p class="glance-stat"><span class="glance-num">${g.entries}</span><span class="glance-label">${g.entries === 1 ? 'entry' : 'entries'}${detail}</span></p>
     </div>
   </section>`;
+}
+
+// The mark in a day's leftover space steps aside once that space gets short.
+// Measured here rather than with a size container query: in a size container,
+// the mark's settle animation re-triggers the query and restarts every frame.
+function fitDayRest() {
+  const rest = $('#view .day-rest');
+  if (rest) rest.classList.toggle('tight', rest.clientHeight <= 120);
 }
 
 function pageDay(delta) {
@@ -1069,7 +1172,7 @@ function viewTrends() {
     <section class="card chart-card">
       <h2 class="chart-title">Symptom load</h2>
       <p class="fine">Each day's total, from 0 to 20. Shaded bands are phases. Tap the chart for a day's details.</p>
-      ${loadChartHtml(series, bands, { interactive: true })}
+      ${loadChartHtml(series, bands, { interactive: true, draw: firstViewOfRange(U.trendRange) })}
       ${bandLegendHtml(bands)}
       ${loggedDays < 4 ? '<p class="hint">A few more days of logging will make the shape easier to read.</p>' : ''}
     </section>
@@ -1139,6 +1242,14 @@ const PAD_R = 12;
 const charts = new Map();   // interactive chart id -> its series, for the day readout
 let chartSeq = 0;
 
+// The load line draws itself in the first time each range is viewed this session.
+const drawnRanges = new Set();
+function firstViewOfRange(range) {
+  if (drawnRanges.has(range)) return false;
+  drawnRanges.add(range);
+  return true;
+}
+
 const slotWidth = (n) => (CHART_W - PAD_L - PAD_R) / n;
 const slotMid = (n, i) => PAD_L + (i + 0.5) * slotWidth(n);
 const round1 = (v) => Math.round(v * 10) / 10;
@@ -1150,7 +1261,7 @@ function bandColor(tag) {
   return slot == null || slot < 0 ? 'var(--ink3)' : `var(--band-${slot})`;
 }
 
-function loadChartHtml(series, bands, { interactive = false } = {}) {
+function loadChartHtml(series, bands, { interactive = false, draw = false } = {}) {
   const id = `chart${++chartSeq}`;
   const n = series.length;
   // Each food in range gets its own horizontal track behind the line, so
@@ -1241,8 +1352,8 @@ function loadChartHtml(series, bands, { interactive = false } = {}) {
 
   if (interactive) charts.set(id, series);
   const label = `Daily symptom load, ${dayShort(series[0].day)} to ${dayShort(series[n - 1].day)}`;
-  return `<svg class="chart" id="${id}" viewBox="0 0 ${CHART_W} ${H}" role="img" aria-label="${esc(label)}"${interactive ? ' data-chart tabindex="0"' : ''}>`
-    + `<defs>${[...patterns].join('')}</defs>${bandSvg}${grid}<path class="area" d="${area}"/><path class="line" d="${line}"/>${marks}${xLabels}`
+  return `<svg class="chart${draw ? ' draw' : ''}" id="${id}" viewBox="0 0 ${CHART_W} ${H}" role="img" aria-label="${esc(label)}"${interactive ? ' data-chart tabindex="0"' : ''}>`
+    + `<defs>${[...patterns].join('')}</defs>${bandSvg}${grid}<path class="area" d="${area}"/><path class="line" pathLength="1" d="${line}"/>${marks}${xLabels}`
     + (interactive ? `<line class="cross" x1="0" x2="0" y1="${top}" y2="${bottom}" visibility="hidden"/>` : '')
     + `</svg>${interactive ? '<div class="tip" hidden></div>' : ''}`;
 }
@@ -1599,7 +1710,17 @@ async function exportBackup() {
   S.lastBackup = stamp;
   save();
   render();
-  toast(`Backup saved as ${name}.`);
+  openBackupDoneSheet(name);
+}
+
+function openBackupDoneSheet(name) {
+  openSheet({
+    title: 'Backup saved',
+    body: `${ILLO_BACKUP}
+      <p class="illo-lede">${esc(name)}</p>
+      <p class="hint">Keep it somewhere safe, like Files or iCloud Drive. To bring the diary back, use Restore from a backup in More, or on a new phone's welcome screen.</p>`,
+    foot: '<button class="btn btn-primary" data-act="close-sheet" data-primary>Done</button>',
+  });
 }
 
 async function importBackup(file) {
@@ -1896,6 +2017,7 @@ function closeSheet(instant = false) {
     scrim.remove();
     return;
   }
+  el.classList.add('closing');   // leaves a little faster than it arrived
   el.classList.remove('dragging', 'in');
   el.style.transform = '';
   scrim.classList.remove('in');
@@ -2124,6 +2246,7 @@ function logMeal(id, d) {
   render();
   toast(`Logged ${m.name}, ${whenLabel(ts)}`, {
     ms: 7000,
+    icon: 'meal',
     actions: [
       { label: 'Time', fn: () => openTimeSheet(ev.id) },
       { label: 'Undo', fn: () => undoFood(ev.id, m.id, before, false) },
@@ -2172,6 +2295,7 @@ async function logNewFood(d) {
   render();
   toast(`Logged ${name}, ${whenLabel(ts)}.${retagged ? ' Saved meal updated.' : ''}`, {
     ms: 7000,
+    icon: 'meal',
     actions: [{ label: 'Undo', fn: () => undoFood(ev.id, meal && meal.id, before, created) }],
   });
 }
@@ -2204,7 +2328,7 @@ function openTimeSheet(id) {
         save();
         closeSheet();
         render();
-        toast(`Moved to ${whenLabel(ev.ts)}.`);
+        toast(`Moved to ${whenLabel(ev.ts)}.`, { icon: 'check' });
       },
     },
     onField: (t, type) => { if (t.dataset.field === 'when' && type === 'change') whenField(d, t); },
@@ -2232,7 +2356,7 @@ function openFoodEdit(id) {
         save();
         closeSheet();
         render();
-        toast(dayKey(ev.ts) === viewDay() ? 'Saved.' : `Saved, and moved to ${whenLabel(ev.ts)}.`);
+        toast(dayKey(ev.ts) === viewDay() ? 'Saved.' : `Saved, and moved to ${whenLabel(ev.ts)}.`, { icon: 'check' });
       },
       delete: () => deleteEntry('food', id),
     },
@@ -2416,7 +2540,7 @@ function saveSymptom(d, ev) {
     save();
     closeSheet();
     render();
-    toast(dayKey(ts) === viewDay() ? 'Saved.' : `Saved, and moved to ${whenLabel(ts)}.`);
+    toast(dayKey(ts) === viewDay() ? 'Saved.' : `Saved, and moved to ${whenLabel(ts)}.`, { icon: 'check' });
     return;
   }
   const e = { id: newId(), ts, ...fields };
@@ -2426,6 +2550,7 @@ function saveSymptom(d, ev) {
   render();
   toast(`Logged ${symptomName(e).toLowerCase()}, ${whenLabel(ts)}`, {
     ms: 6000,
+    icon: 'check',
     actions: [{ label: 'Undo', fn: () => { S.symptomLog = S.symptomLog.filter((x) => x.id !== e.id); save(); render(); toast('Removed.'); } }],
   });
 }
@@ -2595,11 +2720,18 @@ function confirmDialog({ title, body = '', ok = 'OK', cancel = 'Cancel', danger 
 
 let toastTimer = 0;
 let errorUntil = 0;   // a save error outranks the "Logged" confirmation that would follow it
-function toast(msg, { actions = [], ms = 4000, error = false } = {}) {
+const TOAST_CHECK = '<svg class="toast-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 12.5l4 4 9-9" pathLength="1"/></svg>';
+
+// icon: 'check' draws a quick check (any saved entry); 'meal' settles the mark
+// with a check badge (food logs only, never beside symptom data).
+function toast(msg, { actions = [], ms = 4000, error = false, icon = '' } = {}) {
   if (!error && performance.now() < errorUntil) return;
   if (error) errorUntil = performance.now() + ms;
   const el = $('#toast');
-  el.innerHTML = `<span class="toast-msg">${esc(msg)}</span>${actions.map((a, i) => `<button data-i="${i}">${esc(a.label)}</button>`).join('')}`;
+  const lead = icon === 'meal'
+    ? `<span class="toast-mark" aria-hidden="true">${markSvg('default', 'settle')}<span class="toast-badge">${TOAST_CHECK}</span></span>`
+    : icon === 'check' ? TOAST_CHECK : '';
+  el.innerHTML = `${lead}<span class="toast-msg">${esc(msg)}</span>${actions.map((a, i) => `<button data-i="${i}">${esc(a.label)}</button>`).join('')}`;
   el.onclick = (e) => {
     const b = e.target.closest('button');
     hideToast();
@@ -2660,6 +2792,71 @@ async function checkForUpdate() {
   if (swReg?.waiting) { applyUpdate(); return; }
   if (swReg?.installing) { toast('Downloading the update...'); return; }
   toast('No update found yet. Close the app completely and open it again.', { ms: 6000 });
+}
+
+// ---- motion ------------------------------------------------------------------------------
+// Taps on choice controls get a small spring. Many taps re-render their sheet,
+// so the spring finds whichever node now carries the tapped control's identity.
+const SPRING_CONTROLS = '.chip, .opt, .cat, .seg button, .switchrow';
+// Anything showing severity 3, or carrying a call-the-doctor note, settles calmly: no bounce.
+const CALM_CONTROLS = '[data-sev="3"], [data-stool="watery"], [data-flag="blood"]';
+
+function springKey(el) {
+  if (!el.matches(SPRING_CONTROLS)) return null;
+  return [...el.attributes].filter((a) => a.name.startsWith('data-') && a.name !== 'data-primary')
+    .map((a) => `[${a.name}="${CSS.escape(a.value)}"]`).join('') || null;
+}
+
+function spring(key) {
+  const el = (sheet && sheet.el.querySelector(key)) || document.querySelector(key);
+  if (!el) return;
+  const cls = el.matches(CALM_CONTROLS) ? 'settle-calm' : 'spring';
+  el.classList.remove('spring', 'settle-calm');
+  void el.offsetWidth;   // restart on a repeated tap
+  el.classList.add(cls);
+  el.addEventListener('animationend', () => el.classList.remove(cls), { once: true });
+}
+
+// ---- launch welcome ----------------------------------------------------------------------
+// On the first launch of a session the mark plays a short entrance over an app
+// that is already live underneath: any tap or key goes straight through and
+// skips it, and reloads or tab switches in the same session never replay it.
+const WELCOME_KEY = `${STORE_PREFIX}welcomed`;
+
+function firstLaunchThisSession() {
+  try {
+    if (sessionStorage.getItem(WELCOME_KEY)) return false;
+    sessionStorage.setItem(WELCOME_KEY, '1');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function playWelcome() {
+  const el = document.createElement('div');
+  el.className = 'welcome';
+  el.setAttribute('aria-hidden', 'true');
+  el.innerHTML = markSvg('default');
+  document.body.append(el);
+  let timer = 0;
+  function stopListening() {
+    clearTimeout(timer);
+    removeEventListener('pointerdown', skip, true);
+    removeEventListener('keydown', skip, true);
+  }
+  function skip() {
+    stopListening();
+    el.remove();
+  }
+  addEventListener('pointerdown', skip, true);
+  addEventListener('keydown', skip, true);
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  timer = setTimeout(() => {
+    stopListening();
+    el.classList.add('out');
+    setTimeout(() => el.remove(), 400);
+  }, still ? 300 : 820);
 }
 
 // ---- events --------------------------------------------------------------------------------
@@ -2773,7 +2970,9 @@ document.addEventListener('click', (e) => {
   if (!el || el.disabled) return;
   const act = el.dataset.act;
   const fn = (sheet && sheet.el.contains(el) && sheet.actions[act]) || ACTIONS[act];
+  const key = springKey(el);
   if (fn) fn(el, e);
+  if (key) spring(key);
 });
 
 document.addEventListener('input', (e) => {
@@ -2841,7 +3040,9 @@ function boot() {
   document.title = APP_NAME;
   fitShell();
   addEventListener('resize', fitShell);
+  new ResizeObserver(fitDayRest).observe($('#view'));
   initServiceWorker();
+  const coldLaunch = firstLaunchThisSession();
   let raw;
   try {
     raw = localStorage.getItem(STORE_KEY);
@@ -2867,8 +3068,12 @@ function boot() {
     S = res.state;
     if (res.migrated) save();
   }
-  if (S.onboarded) showApp();
-  else showOnboarding();
+  if (S.onboarded) {
+    showApp();
+    if (coldLaunch) playWelcome();
+  } else {
+    showOnboarding();
+  }
   if (notice) toast(notice, { ms: 9000 });
 }
 

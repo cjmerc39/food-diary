@@ -42,13 +42,22 @@ own files so it works offline; the diary itself lives only in localStorage.
   what the phone doesn't have (the phone's copy wins on a clash); Replace swaps
   the diary after a confirm; both can be undone right after. Only this app's
   backup files are accepted, and damaged entries are left out.
+- **Motion:** controls give a small spring on tap (a calm settle instead, with
+  no bounce, for severity 3, watery stool, and blood), sheets ease in and out,
+  saves draw a check in the toast, day paging slides with the swipe, and the
+  Trends line draws in on each range's first view. The bowl-and-drop mark stays
+  in chrome, never beside symptom data: it settles in food-log toasts and on
+  quiet days (a moon late at night, a sun in the morning, a leaf on a past day
+  with food and no symptoms, nothing on a day with symptoms), and plays a short
+  welcome once per session at launch that any tap skips. Everything honors
+  Reduce Motion.
 
 ## Files
 
 | File | What it is |
 | --- | --- |
 | `index.html` | The whole app: markup, styles, UI code |
-| `logic.js` | Pure computation shared by the browser and the tests: time and day math, phases, meals and tags, symptom load, suspects, trends ranges, backups (reading, checking, merging), and the backup reminder |
+| `logic.js` | Pure computation shared by the browser and the tests: time and day math, phases, meals and tags, symptom load, suspects, trends ranges, backups (reading, checking, merging), the backup reminder, and which mark a quiet day shows |
 | `logic.test.js` | Tests for `logic.js` |
 | `sw.js` | Cache-first service worker for the app shell |
 | `manifest.json` | PWA manifest |
@@ -65,8 +74,11 @@ node make-icons.js     # regenerate icons
 
 `index.html` loads `logic.js` as a module, which browsers refuse over
 `file://`. Preview through any local static server instead. Phone-sized browser
-checks (every flow in light and dark, storage safety, a simulated deploy) are
-kept outside this repo so it stays free of dependencies.
+checks (every flow in light and dark, motion timing and Reduce Motion, storage
+safety, a simulated deploy) are kept outside this repo so it stays free of
+dependencies. Keep every animation under about 300ms (the launch welcome
+excepted), and never add bounce to anything showing severity 3 or a
+call-the-doctor note.
 
 ## Deploy
 
