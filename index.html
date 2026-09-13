@@ -22,7 +22,7 @@
   --ink:#2e2924; --ink2:#645b51; --ink3:#8a8075;
   --food:#b0553a; --food-on:#fff8f1; --food-soft:#f3e0d5; --food-ink:#8a3f28;
   --sym:#34766f; --sym-on:#f3faf9; --sym-soft:#d9e9e6; --sym-ink:#285c57;
-  --danger:#a33b2c; --danger-on:#fff6f2; --primary:#2e2924; --primary-on:#f6f1e8;
+  --danger:#a33b2c; --danger-on:#fff6f2; --danger-soft:#f6dcd6; --primary:#2e2924; --primary-on:#f6f1e8;
   --scrim:rgba(46,41,36,.4); --shadow:0 -8px 32px rgba(70,50,30,.14);
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --round:ui-rounded,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
@@ -34,35 +34,44 @@
     --ink:#e3dace; --ink2:#a59b8f; --ink3:#7b7268;
     --food:#bd7659; --food-on:#1a110d; --food-soft:#2f211b; --food-ink:#dca088;
     --sym:#579891; --sym-on:#0b1514; --sym-soft:#172826; --sym-ink:#8bc0ba;
-    --danger:#cf6e5c; --danger-on:#1a0f0c; --primary:#c8beb1; --primary-on:#14120f;
+    --danger:#cf6e5c; --danger-on:#1a0f0c; --danger-soft:#2e1916; --primary:#c8beb1; --primary-on:#14120f;
     --scrim:rgba(0,0,0,.62); --shadow:0 -8px 32px rgba(0,0,0,.6);
   }
 }
 
 /* ---- app shell ----------------------------------------------------------------
    Body is a locked flex column and <main> is the only scroller: fixed bars
-   never jitter or cover content. Installed iPhone apps size the viewport as if
-   Safari's toolbar existed, leaving a dead band at the bottom; 100lvh in
-   standalone mode is the only fix that holds, so overlays are positioned
-   inside the body rather than with position:fixed. */
+   never jitter or cover content. Installed iPhone apps mis-size their viewport
+   (see fitShell), so in standalone mode the body's height is measured, and
+   overlays are positioned inside the body rather than with position:fixed. */
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
 html{height:100%;background:var(--bg);touch-action:manipulation;-webkit-text-size-adjust:100%}
 body{position:relative;height:100%;display:flex;flex-direction:column;overflow:hidden;
   background:var(--bg);color:var(--ink);font:17px/1.45 var(--sans)}
 @supports (height:100dvh){body{height:100dvh}}
-@media (display-mode: standalone){@supports (height:100lvh){body{height:100lvh}}}
+@media (display-mode: standalone){body{height:var(--app-h,100%)}}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;touch-action:manipulation}
 /* 16px floor: iOS zooms the page when a smaller input is focused */
 input,select,textarea{font:inherit;font-size:max(16px,1em);color:var(--ink)}
 :focus-visible{outline:3px solid var(--sym);outline-offset:2px;border-radius:6px}
 svg{display:block;flex:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 .screen{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;width:100%;max-width:560px;margin:0 auto}
 
 #top{flex:none;padding:calc(14px + env(safe-area-inset-top)) 20px 12px}
-#title{font:700 30px/1.15 var(--round);letter-spacing:-.01em}
-#subtitle{margin-top:2px;color:var(--ink2);font-size:16px}
+.title{display:block;font:700 30px/1.15 var(--round);letter-spacing:-.01em}
+.subtitle{display:block;margin-top:2px;color:var(--ink2);font-size:16px}
+.dayhead{display:flex;align-items:center;gap:8px}
+.daypick{position:relative;flex:1 1 auto;min-width:0;display:block;border-radius:12px}
+.daypick .subtitle{display:flex;align-items:center;gap:4px}
+.daypick .subtitle svg{width:18px;height:18px}
+.daypick input{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;cursor:pointer}
+.navbtn{flex:none;min-width:48px;height:48px;padding:0 12px;border-radius:14px;background:var(--sunk);
+  color:var(--ink);display:grid;place-items:center;font-weight:600;font-size:16px}
+.navbtn svg{width:22px;height:22px}
+.navbtn:disabled{opacity:.35;cursor:default}
 
 #view{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;
   -webkit-overflow-scrolling:touch;padding:4px 16px 28px}
@@ -96,22 +105,31 @@ svg{display:block;flex:none}
 .kicker{color:var(--ink2);font-size:15px;font-weight:600}
 .lead{color:var(--ink2);font-size:18px;line-height:1.5}
 .fine{color:var(--ink2);font-size:14px}
-.btn{min-height:56px;padding:0 20px;border-radius:16px;background:var(--sunk);color:var(--ink);
+.btn{min-height:56px;max-width:100%;padding:0 20px;border-radius:16px;background:var(--sunk);color:var(--ink);
   font:600 18px/1.2 var(--round);display:flex;align-items:center;justify-content:center;text-align:center}
+.btn svg{width:22px;height:22px;margin-right:6px}
 .btn:active{transform:scale(.98)}
+.btn:disabled{opacity:.45;cursor:default;transform:none}
 .btn-primary{background:var(--primary);color:var(--primary-on)}
 .btn-food{background:var(--food);color:var(--food-on)}
 .btn-symptom{background:var(--sym);color:var(--sym-on)}
 .btn-danger{background:var(--danger);color:var(--danger-on)}
+.btn-quiet-danger{background:var(--sunk);color:var(--danger)}
+.clip{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chips{display:flex;flex-wrap:wrap;gap:10px}
 .chip{min-height:48px;padding:0 18px;border-radius:999px;border:1.5px solid var(--line);background:var(--card);
   font-weight:600;font-size:17px;color:var(--ink)}
 .chip[aria-pressed="true"]{background:var(--food);border-color:var(--food);color:var(--food-on)}
+.chip[aria-pressed="mixed"]{background:transparent;border:2px dashed var(--food);color:var(--food-ink)}
+.chip[aria-pressed="mixed"]::after{content:"?"}
 .input{display:block;width:100%;height:56px;padding:0 16px;border-radius:14px;border:1.5px solid var(--line);
   background:var(--card);font-size:19px}
-.input:focus{outline:none;border-color:var(--sym)}
+.input:focus,.textarea:focus{outline:none;border-color:var(--sym)}
+.textarea{display:block;width:100%;min-height:76px;padding:12px 14px;border-radius:14px;border:1.5px solid var(--line);
+  background:var(--card);line-height:1.4;resize:vertical}
 .date{min-height:48px;padding:0 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--sunk);
   font-size:17px;font-weight:600}
+.date.wide{display:block;width:100%;min-height:52px}
 .soon{margin:18px 4px 8px;padding:12px 14px;border:1.5px dashed var(--line);border-radius:14px;
   color:var(--ink2);font-size:15px}
 
@@ -121,14 +139,62 @@ svg{display:block;flex:none}
 .empty p{max-width:30ch;margin:0 auto}
 .empty b{color:var(--ink)}
 
+/* ---- today: banners, watch cards, timeline -------------------------------------- */
+.banner{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;padding:8px 6px 8px 14px;border-radius:18px;
+  background:var(--food-soft);color:var(--food-ink)}
+.banner > svg{width:24px;height:24px;margin-top:10px}
+.banner p{flex:1;padding:9px 0;color:var(--ink);font-size:16px;line-height:1.4}
+.xbtn{flex:none;width:44px;height:44px;border-radius:12px;display:grid;place-items:center;color:var(--food-ink)}
+.xbtn svg{width:20px;height:20px}
+.watch{margin-bottom:12px;border:1.5px solid var(--sym)}
+.watch h3{margin-top:2px;font:600 20px/1.3 var(--round)}
+.watch p{margin-top:6px;color:var(--ink2)}
+.watch .plain{margin-top:4px;font-size:15px}
+.meter{height:10px;margin:12px 0 4px;border-radius:5px;background:var(--sym-soft);overflow:hidden}
+.meter span{display:block;height:100%;border-radius:5px;background:var(--sym)}
+
+.timeline{list-style:none;display:grid;gap:10px}
+.entry{display:flex;align-items:flex-start;gap:12px;width:100%;padding:12px 14px;border-radius:18px;
+  background:var(--card);border:1px solid var(--line);text-align:left}
+.entry:active{background:var(--sunk)}
+.entry-ico{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center}
+.entry-ico svg{width:24px;height:24px}
+.entry.food .entry-ico{background:var(--food-soft);color:var(--food-ink)}
+.entry.symptom .entry-ico{background:var(--sym-soft);color:var(--sym-ink)}
+.entry-main{flex:1 1 auto;min-width:0;display:block}
+.entry-top{display:flex;align-items:baseline;gap:10px}
+.entry-name{flex:1 1 auto;min-width:0;font-weight:600;font-size:18px;line-height:1.3;overflow-wrap:anywhere}
+.entry-time{flex:none;color:var(--ink2);font-size:15px;font-variant-numeric:tabular-nums}
+.entry-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
+.entry-note{display:block;margin-top:4px;color:var(--ink2);font-size:15px;overflow-wrap:anywhere}
+.tag{display:inline-flex;align-items:center;min-height:26px;padding:0 10px;border-radius:999px;
+  border:1.5px solid var(--food-soft);background:var(--food-soft);color:var(--food-ink);font-size:14px;font-weight:600}
+.tag.maybe{background:transparent;border-style:dashed;border-color:var(--food)}
+.pips{display:inline-flex;align-items:center;gap:4px;margin-right:4px}
+.pip{width:11px;height:11px;border-radius:50%;border:1.5px solid var(--sym)}
+.pip.on{background:var(--sym)}
+.flag{display:inline-flex;align-items:center;min-height:26px;padding:0 10px;border-radius:999px;
+  background:var(--sym-soft);color:var(--sym-ink);font-size:14px;font-weight:600}
+.flag.alert{background:var(--danger-soft);color:var(--danger)}
+@media (prefers-reduced-motion: no-preference){
+  .dayanim-next{animation:day-next .22s ease-out}
+  .dayanim-prev{animation:day-prev .22s ease-out}
+}
+@keyframes day-next{from{opacity:.3;transform:translateX(28px)}}
+@keyframes day-prev{from{opacity:.3;transform:translateX(-28px)}}
+
 /* ---- phases --------------------------------------------------------------------- */
+.phase{display:block;width:100%;text-align:left}
+.phase:active{background:var(--sunk)}
 .phase-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .tagpill{padding:4px 12px;border-radius:999px;background:var(--food-soft);color:var(--food-ink);font-weight:700;font-size:15px}
+.tagpill.sym{background:var(--sym-soft);color:var(--sym-ink)}
 .status{margin-left:auto;color:var(--ink2);font-size:14px;font-weight:600}
 .status.on{color:var(--sym-ink)}
-.phase h3{font:600 21px/1.3 var(--round)}
-.phase .fine{margin-top:2px}
+.phase-title{display:block;font:600 21px/1.3 var(--round)}
+.phase .fine,.phase .note{display:block;margin-top:2px}
 .phase .note{margin-top:8px;color:var(--ink2)}
+.addbtn{width:100%;margin-top:14px}
 
 /* ---- more ----------------------------------------------------------------------- */
 .about-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
@@ -169,6 +235,60 @@ svg{display:block;flex:none}
 .blocked-body svg{width:60px;height:60px;margin:0 auto 18px;color:var(--food)}
 .blocked-body .lead{max-width:32ch;margin:0 auto 12px}
 
+/* ---- sheet forms ---------------------------------------------------------------- */
+.sect{display:block;margin-top:20px}
+.sect-label{display:block;margin-bottom:8px;color:var(--ink2);font-size:15px;font-weight:600}
+.hint{margin-top:10px;color:var(--ink2);font-size:15px}
+.lede{margin-bottom:4px;color:var(--ink2);font-size:15px}
+.search{position:relative;display:block}
+.search svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);width:22px;height:22px;color:var(--ink2);pointer-events:none}
+.search .input{padding-left:46px;-webkit-appearance:none;appearance:none}
+.meal-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.meal-chip{min-height:68px;padding:10px 14px;border-radius:16px;background:var(--sunk);text-align:left;
+  display:flex;flex-direction:column;justify-content:center;gap:3px;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.meal-chip:active{transform:scale(.97)}
+.mc-name{font-weight:600;font-size:17px;line-height:1.25;overflow:hidden;overflow-wrap:anywhere;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.mc-tags{color:var(--ink2);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tagpick .chip{min-height:46px;padding:0 16px;font-size:16px}
+.when{display:grid;gap:10px}
+.when .chips{gap:8px}
+.when .chip{min-height:44px;padding:0 16px;font-size:16px}
+.when .chip[aria-pressed="true"]{background:var(--primary);border-color:var(--primary);color:var(--primary-on)}
+.when-input{width:100%;min-height:50px}
+.switchrow{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;min-height:56px;
+  margin-top:16px;padding:0 2px;text-align:left;font-weight:600}
+.switch{position:relative;flex:none;width:52px;height:32px;border-radius:16px;background:var(--ink3);transition:background .2s}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;
+  background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .2s}
+[aria-checked="true"] > .switch{background:var(--sym)}
+[aria-checked="true"] > .switch::after{transform:translateX(20px)}
+.cat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.cat{min-height:74px;padding:8px 4px;border-radius:16px;background:var(--sunk);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:4px;font-weight:600;font-size:15px}
+.cat svg{width:26px;height:26px}
+.cat[aria-pressed="true"]{background:var(--sym);color:var(--sym-on)}
+.opts{display:grid;gap:8px}
+.opt{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:10px 14px;border-radius:16px;
+  background:var(--sunk);text-align:left;font-size:17px}
+.opt .num{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--card);font-weight:700}
+.opt-text{flex:1;display:block}
+.opt-sub{display:block;margin-top:2px;color:var(--ink2);font-size:14px}
+.opt-warn{display:block;margin-top:3px;color:var(--danger);font-size:14px;font-weight:600}
+.opt[aria-checked="true"]{background:var(--sym);color:var(--sym-on)}
+.opt[aria-checked="true"] .num{background:var(--sym-on);color:var(--sym-ink)}
+.opt[aria-checked="true"] .opt-sub,.opt[aria-checked="true"] .opt-warn{color:var(--sym-on)}
+.flagpick .chip[aria-pressed="true"]{background:var(--sym);border-color:var(--sym);color:var(--sym-on)}
+.caution{display:flex;align-items:flex-start;gap:10px;margin-top:10px;padding:12px 14px;border-radius:14px;
+  background:var(--danger-soft);color:var(--danger);font-weight:600;font-size:16px}
+.caution svg{width:22px;height:22px;margin-top:1px}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.seg button{min-height:52px;border-radius:14px;background:var(--sunk);font-weight:600;font-size:17px}
+.seg button[aria-pressed="true"]{background:var(--primary);color:var(--primary-on)}
+.foot-row{display:grid;grid-template-columns:1fr 2fr;gap:10px}
+.foot-hint{color:var(--ink2);font-size:15px;text-align:center}
+.foot-hint:empty{display:none}
+
 /* ---- overlays: sheets, dialogs, toast ----------------------------------------- */
 #layer{position:absolute;inset:0;z-index:20;pointer-events:none}
 #layer > *{pointer-events:auto}
@@ -185,9 +305,11 @@ svg{display:block;flex:none}
 .grab::before{content:"";width:44px;height:5px;border-radius:3px;background:var(--grab)}
 .sheet-head{flex:none;padding:2px 22px 10px}
 .sheet-head h2{font:700 24px/1.2 var(--round)}
-.sheet-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:0 22px 12px}
+.sheet-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:4px 22px 16px}
+.sheet-body > .sect:first-child{margin-top:4px}
 .sheet-body .soon{margin:4px 0 8px}
 .sheet-foot{flex:none;display:grid;gap:10px;padding:12px 16px 14px;border-top:1px solid var(--line)}
+.sheet-foot:empty{display:none}
 .scrim.top{z-index:2}
 .dialog{position:absolute;z-index:3;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));
   max-width:536px;margin:0 auto;padding:22px 18px 16px;border-radius:26px;background:var(--card);
@@ -197,15 +319,15 @@ svg{display:block;flex:none}
 .dialog p{padding:0 4px;margin-top:6px;color:var(--ink2)}
 .dialog-btns{display:grid;gap:10px;margin-top:20px}
 #toast{position:absolute;z-index:30;left:16px;right:16px;max-width:528px;margin:0 auto;
-  bottom:calc(24px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:12px;
-  min-height:48px;padding:12px 12px 12px 18px;border-radius:16px;background:var(--primary);color:var(--primary-on);font-size:16px;
+  bottom:calc(24px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px;
+  min-height:48px;padding:8px 8px 8px 18px;border-radius:16px;background:var(--primary);color:var(--primary-on);font-size:16px;
   opacity:0;transform:translateY(12px);pointer-events:none;transition:opacity .2s,transform .2s}
 /* keep clear of each screen's bottom buttons */
 body[data-screen="app"] #toast{bottom:calc(var(--tabs-h) + var(--act-h) + 34px + env(safe-area-inset-bottom))}
 body[data-screen="onboard"] #toast,body[data-screen="blocked"] #toast{bottom:calc(98px + env(safe-area-inset-bottom))}
 #toast.in{opacity:1;transform:none;pointer-events:auto}
-#toast span{flex:1}
-#toast button{min-height:44px;padding:0 14px;border-radius:10px;font-weight:700;color:var(--primary-on);background:rgba(128,128,128,.28)}
+#toast .toast-msg{flex:1;min-width:0;padding:4px 0;overflow-wrap:anywhere}
+#toast button{flex:none;min-height:44px;padding:0 14px;border-radius:10px;font-weight:700;color:var(--primary-on);background:rgba(128,128,128,.28)}
 
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important}
@@ -214,7 +336,7 @@ body[data-screen="onboard"] #toast,body[data-screen="blocked"] #toast{bottom:cal
 </head>
 <body>
 <div id="app" class="screen" hidden>
-  <header id="top"><h1 id="title"></h1><p id="subtitle"></p></header>
+  <header id="top"></header>
   <main id="view"></main>
   <div id="update" role="status" hidden>
     <span>A new version is ready.</span>
@@ -233,8 +355,12 @@ body[data-screen="onboard"] #toast,body[data-screen="blocked"] #toast{bottom:cal
 
 <script type="module">
 import {
-  STARTER_TAGS, toLocalISO, parseLocal, readState, freshState,
-  tagLabel, sortPhases, isPhaseActive, phaseDay,
+  STARTER_TAGS, SYMPTOM_CATS, CAT_FLAGS, STOOL_SEVERITY, WATCH_HOURS,
+  toLocalISO, parseLocal, dayKey, addDays, addHours, readState, freshState,
+  allTags, tagLabel, tagState, cycleTag, sortPhases, isPhaseActive, phaseDay, phasesToClose,
+  rankMeals, searchMeals, findMealByName, autoMealName,
+  symptomMissing, symptomFields, dayEntries, exposureBanners, pruneDismissed, reintroWatches,
+  standaloneHeight,
 } from './logic.js';
 
 // ---- identity ------------------------------------------------------------------
@@ -243,7 +369,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 1;
+const BUILD = 2;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -254,6 +380,8 @@ let S = null;          // the one saved state object; call save() after every mu
 let blocked = false;   // true when the saved diary must not be written over
 const U = {            // UI-only, never saved
   tab: 'today',
+  day: null,           // day key being viewed on Today; null means today
+  fit: null,           // last installed-app height measurement, shown in More
   ob: { step: 0, name: '', picks: {}, lockUntil: 0 },   // onboarding: picks = { tagId: 'YYYY-MM-DD' }
 };
 
@@ -263,7 +391,7 @@ function save() {
     localStorage.setItem(STORE_KEY, JSON.stringify(S));
     return true;
   } catch {
-    toast(`Couldn't save that. This phone may be out of room for ${APP_NAME}. Export a backup from More.`, { ms: 8000 });
+    toast(`Couldn't save that. This phone may be out of room for ${APP_NAME}. Export a backup from More.`, { ms: 8000, error: true });
     return false;
   }
 }
@@ -274,7 +402,22 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nowTs = () => toLocalISO(new Date());
 const todayKey = () => nowTs().slice(0, 10);
+const viewDay = () => U.day || todayKey();
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
+
+// Installed-app height, measured rather than trusted (see standaloneHeight).
+function fitShell() {
+  if (!isStandalone()) return;
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:absolute;visibility:hidden;padding-top:env(safe-area-inset-top)';
+  document.body.append(probe);
+  const insetTop = parseFloat(getComputedStyle(probe).paddingTop) || 0;
+  probe.remove();
+  const h = standaloneHeight({ insetTop, screenW: screen.width, screenH: screen.height, innerW: innerWidth, innerH: innerHeight });
+  document.documentElement.style.setProperty('--app-h', `${h}px`);
+  U.fit = { insetTop, screen: `${screen.width}x${screen.height}`, window: `${innerWidth}x${innerHeight}`, h };
+}
 
 function newId() {
   const a = new Uint32Array(2);
@@ -289,20 +432,74 @@ function fmtDate(ts, { weekday = false } = {}) {
   if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
   return d.toLocaleDateString(undefined, opts);
 }
+const fmtTime = (ts) => parseLocal(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+const weekdayTime = (ts) => `${parseLocal(ts).toLocaleDateString(undefined, { weekday: 'short' })} ${fmtTime(ts)}`;
+
+// "2:30 PM" today, "yesterday 2:30 PM", otherwise "Fri, Sep 11, 2:30 PM".
+function whenLabel(ts) {
+  const day = dayKey(ts), today = todayKey();
+  if (day === today) return fmtTime(ts);
+  if (day === addDays(today, -1)) return `yesterday ${fmtTime(ts)}`;
+  return `${fmtDate(ts, { weekday: true })}, ${fmtTime(ts)}`;
+}
+
+// ---- symptom vocabulary ----------------------------------------------------------
+// Severity anchors are printed in the sheet so 1, 2 and 3 mean the same thing
+// every time. The categories follow the clinical cow's-milk ones, but the load
+// score built on them is this app's own.
+const CATS = {
+  crying: { label: 'Crying', anchors: ['Fussier than usual', 'One to three hours unexplained', 'Three-plus hours, or inconsolable'] },
+  spitup: { label: 'Spit-up', anchors: ['More than usual', 'Frequent large spit-ups', 'Vomiting, or losing most of feeds'] },
+  stool: { label: 'Stool' },
+  skin: { label: 'Skin', anchors: ['Mild dry patches', 'Clear eczema flare', 'Severe or spreading'] },
+  resp: { label: 'Breathing', anchors: ['Congestion', 'Wheeze or persistent cough', 'Labored breathing'] },
+  other: { label: 'Other', anchors: ['Mild', 'Moderate', 'Severe'] },
+};
+const STOOLS = [
+  { id: 'formed', label: 'Formed', sub: 'Normal. Only worth logging with mucus or blood.' },
+  { id: 'hard', label: 'Hard' },
+  { id: 'loose', label: 'Loose' },
+  { id: 'watery', label: 'Watery' },
+];
+const FLAG_LABELS = { mucus: 'Mucus', blood: 'Blood', hives: 'Hives' };
+const RESP_WARNING = 'Labored breathing is a call-the-doctor-now situation, not a diary entry.';
+const BLOOD_WARNING = 'Blood in stool is worth a call to your pediatrician, not just a diary entry.';
+
+function symptomName(e) {
+  if (e.cat === 'stool') {
+    const s = STOOLS.find((x) => x.id === e.consistency);
+    return s ? `${s.label} stool` : 'Stool';
+  }
+  return CATS[e.cat] ? CATS[e.cat].label : 'Symptom';
+}
 
 // ---- icons (inline SVG, no icon font) --------------------------------------------
 const svg = (body, w = 1.8) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+const DOT = 'fill="currentColor" stroke="none"';
 const ICON = {
-  today: svg('<rect x="3.5" y="5" width="17" height="15.5" rx="3.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><circle cx="12" cy="15.2" r="1.7" fill="currentColor" stroke="none"/>'),
+  today: svg(`<rect x="3.5" y="5" width="17" height="15.5" rx="3.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><circle cx="12" cy="15.2" r="1.7" ${DOT}/>`),
   trends: svg('<path d="M3.5 19.5h17"/><path d="M4.5 15.5l4.5-5 3.5 3 7-7.5"/>'),
   phases: svg('<rect x="3.5" y="4.5" width="11" height="4" rx="2"/><rect x="8" y="10" width="12.5" height="4" rx="2"/><rect x="3.5" y="15.5" width="8.5" height="4" rx="2"/>'),
-  more: svg('<circle cx="5.5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="18.5" cy="12" r="1.5" fill="currentColor"/>'),
+  more: svg(`<circle cx="5.5" cy="12" r="1.5" ${DOT}/><circle cx="12" cy="12" r="1.5" ${DOT}/><circle cx="18.5" cy="12" r="1.5" ${DOT}/>`),
   plus: svg('<path d="M12 5.5v13M5.5 12h13"/>', 2.6),
   food: svg('<path d="M3.5 11.5h17a8.5 8.5 0 0 1-17 0z"/><path d="M9.5 3.5c-1 1.2 1 2.3 0 3.5M14 3.5c-1 1.2 1 2.3 0 3.5"/>'),
   lock: svg('<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>'),
   home: svg('<rect x="4" y="4" width="16" height="16" rx="4.5"/><path d="M12 8.5v7M8.5 12h7"/>'),
   sprout: svg('<path d="M12 20.5v-8"/><path d="M12 12.5C12 8.5 9 6 4.5 6c0 4 3 6.5 7.5 6.5z"/><path d="M12 14.5c0-3.5 2.8-6 7.5-6 0 3.8-2.8 6-7.5 6z"/>'),
   shield: svg('<path d="M12 3.5l7.5 3v5.5c0 4.4-3.2 7.8-7.5 9-4.3-1.2-7.5-4.6-7.5-9V6.5z"/><path d="M12 8.5v4.5M12 16.3v.1"/>'),
+  search: svg('<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>'),
+  left: svg('<path d="M14.5 5.5L8 12l6.5 6.5"/>', 2.2),
+  right: svg('<path d="M9.5 5.5L16 12l-6.5 6.5"/>', 2.2),
+  down: svg('<path d="M6.5 9.5L12 15l5.5-5.5"/>', 2),
+  close: svg('<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>', 2.2),
+  alert: svg('<path d="M12 4.5l8.5 15h-17z"/><path d="M12 10v4.5M12 17.2v.1"/>'),
+  eye: svg('<path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>'),
+  crying: svg('<circle cx="12" cy="12" r="8.5"/><path d="M8.5 16.5c1-1.2 2.2-1.8 3.5-1.8s2.5.6 3.5 1.8"/><path d="M9 9.5v1M15 9.5v1"/>'),
+  spitup: svg('<path d="M12 3.5c3.2 4.2 5.5 7.2 5.5 10.2a5.5 5.5 0 0 1-11 0c0-3 2.3-6 5.5-10.2z"/>'),
+  stool: svg('<path d="M3.5 7.5h17v2.5c0 5.2-3.8 9-8.5 9s-8.5-3.8-8.5-9z"/><path d="M3.5 11h3.5M17 11h3.5"/>'),
+  skin: svg(`<path d="M6 7c2.8-3 9.2-3 12 0s3 7.5-.5 10.5-8.5 2.5-11.5 0S3.2 10 6 7z"/><circle cx="9.5" cy="10.5" r="1.1" ${DOT}/><circle cx="14.2" cy="9.6" r="1.1" ${DOT}/><circle cx="12.6" cy="14.2" r="1.1" ${DOT}/>`),
+  resp: svg('<path d="M3.5 9h10.5a3 3 0 1 0-3-3"/><path d="M3.5 13h14.5a3 3 0 1 1-3 3"/><path d="M3.5 17h5"/>'),
+  other: svg('<rect x="5" y="3.5" width="14" height="17" rx="3"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4"/>'),
 };
 
 // ---- screens -----------------------------------------------------------------------
@@ -452,32 +649,32 @@ const TABS = [
   { id: 'more', label: 'More' },
 ];
 
+const headHtml = (title, sub = '') =>
+  `<h1 class="title">${esc(title)}</h1>${sub ? `<p class="subtitle">${esc(sub)}</p>` : ''}`;
+
 const VIEWS = {
-  today: () => ({
-    title: 'Today',
-    sub: parseLocal(nowTs()).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }),
-    html: viewToday(),
-  }),
-  trends: () => ({ title: 'Trends', sub: 'How symptoms move with what you eat', html: viewTrends() }),
-  phases: () => ({ title: 'Phases', sub: "What's out of your diet, and since when", html: viewPhases() }),
-  more: () => ({ title: 'More', sub: '', html: viewMore() }),
+  today: () => ({ head: dayHeadHtml(), html: viewToday() }),
+  trends: () => ({ head: headHtml('Trends', 'How symptoms move with what you eat'), html: viewTrends() }),
+  phases: () => ({ head: headHtml('Phases', "What's out of your diet, and since when"), html: viewPhases() }),
+  more: () => ({ head: headHtml('More'), html: viewMore() }),
 };
 
+let appWired = false;
 function showApp() {
   showScreen('app');
   $('#tabs').innerHTML = TABS.map((t) =>
     `<button class="tab" data-act="tab" data-tab="${t.id}"><span class="tab-ico">${ICON[t.id]}</span><span>${t.label}</span></button>`).join('');
   $('.act-food').innerHTML = `${ICON.plus}<span>food</span>`;
   $('.act-symptom').innerHTML = `${ICON.plus}<span>symptom</span>`;
+  if (!appWired) { wireDaySwipe(); appWired = true; }
   render();
 }
 
-function render() {
+function render(anim = '') {
   const v = VIEWS[U.tab]();
-  $('#title').textContent = v.title;
-  $('#subtitle').textContent = v.sub;
-  $('#subtitle').hidden = !v.sub;
+  $('#top').innerHTML = v.head;
   $('#view').innerHTML = v.html;
+  if (anim) $('#view').firstElementChild?.classList.add(anim);
   for (const b of document.querySelectorAll('#tabs .tab')) {
     if (b.dataset.tab === U.tab) b.setAttribute('aria-current', 'page');
     else b.removeAttribute('aria-current');
@@ -485,6 +682,7 @@ function render() {
 }
 
 function setTab(tab) {
+  if (tab === 'today' && U.tab === 'today') U.day = null;   // tapping Today again jumps back to today
   U.tab = tab;
   render();
   $('#view').scrollTop = 0;
@@ -493,25 +691,171 @@ function setTab(tab) {
 const empty = (icon, title, bodyHtml) =>
   `<div class="empty">${ICON[icon]}<h2>${esc(title)}</h2><p>${bodyHtml}</p></div>`;
 
-function viewToday() {
-  return empty('food', 'Nothing logged yet today',
-    'Tap <b>+ food</b> or <b>+ symptom</b> below. Catching up later is fine: every entry can be backdated.');
+// ---- today -------------------------------------------------------------------------------
+function dayHeadHtml() {
+  const day = viewDay(), today = todayKey();
+  const date = parseLocal(`${day}T00:00`);
+  const recent = day === today || day === addDays(today, -1);
+  const title = day === today ? 'Today' : recent ? 'Yesterday' : date.toLocaleDateString(undefined, { weekday: 'long' });
+  // Past days share the header with a Today button, so their date runs short.
+  const sub = date.toLocaleDateString(undefined, day === today
+    ? { weekday: 'long', month: 'long', day: 'numeric' }
+    : {
+      weekday: recent ? 'short' : undefined, month: 'short', day: 'numeric',
+      year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric',
+    });
+  return `
+    <div class="dayhead">
+      <label class="daypick">
+        <span class="title">${esc(title)}</span>
+        <span class="subtitle">${esc(sub)}${ICON.down}</span>
+        <input type="date" data-field="day" value="${day}" max="${today}" aria-label="Jump to a date">
+      </label>
+      ${day !== today ? '<button class="navbtn" data-act="day-today">Today</button>' : ''}
+      <button class="navbtn" data-act="day-prev" aria-label="Previous day">${ICON.left}</button>
+      <button class="navbtn" data-act="day-next" aria-label="Next day"${day >= today ? ' disabled' : ''}>${ICON.right}</button>
+    </div>`;
 }
 
+function viewToday() {
+  const day = viewDay(), today = todayKey();
+  const cards = day === today ? todayCardsHtml(nowTs()) : '';
+  const rows = dayEntries(S, day);
+  const list = rows.length
+    ? `<ul class="timeline">${rows.map(entryHtml).join('')}</ul>`
+    : day === today
+      ? empty('food', 'Nothing logged yet today', 'Tap <b>+ food</b> or <b>+ symptom</b> below. Catching up later is fine: every entry can be backdated.')
+      : empty('food', `Nothing logged on ${fmtDate(`${day}T00:00`, { weekday: true })}`, 'Tap <b>+ food</b> or <b>+ symptom</b> to add something for this day.');
+  return `<div class="dayview">${cards}${list}</div>`;
+}
+
+function pageDay(delta) {
+  const today = todayKey();
+  const next = addDays(viewDay(), delta);
+  if (next > today) return;
+  U.day = next === today ? null : next;
+  render(delta > 0 ? 'dayanim-next' : 'dayanim-prev');
+  $('#view').scrollTop = 0;
+}
+
+function jumpToDay(value) {
+  if (!value) return;
+  const today = todayKey();
+  const day = value > today ? today : value;
+  U.day = day === today ? null : day;
+  render();
+}
+
+// A deliberate horizontal swipe on the Today list pages days.
+function wireDaySwipe() {
+  const view = $('#view');
+  let t = null;
+  view.addEventListener('touchstart', (e) => {
+    t = U.tab === 'today' && e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+  }, { passive: true });
+  view.addEventListener('touchend', (e) => {
+    if (!t) return;
+    const p = e.changedTouches[0];
+    const dx = p.clientX - t.x, dy = p.clientY - t.y;
+    t = null;
+    if (Math.abs(dx) >= 70 && Math.abs(dx) > Math.abs(dy) * 2) pageDay(dx < 0 ? 1 : -1);
+  }, { passive: true });
+}
+
+function tagChipHtml(id, maybe) {
+  const label = esc(tagLabel(S.settings, id));
+  return maybe
+    ? `<span class="tag maybe">${label}<span aria-hidden="true">?</span><span class="sr">, possibly hidden</span></span>`
+    : `<span class="tag">${label}</span>`;
+}
+
+function entryHtml({ kind, e }) {
+  const time = `<span class="entry-time">${esc(fmtTime(e.ts))}</span>`;
+  const note = e.note ? `<span class="entry-note">${esc(e.note)}</span>` : '';
+  if (kind === 'food') {
+    const tags = [
+      ...(e.tags || []).map((t) => tagChipHtml(t, false)),
+      ...(e.uncertain || []).filter((t) => !(e.tags || []).includes(t)).map((t) => tagChipHtml(t, true)),
+    ].join('');
+    return `<li><button class="entry food" data-act="edit-food" data-id="${e.id}">
+      <span class="entry-ico">${ICON.food}</span>
+      <span class="entry-main">
+        <span class="entry-top"><span class="entry-name">${esc(e.name)}</span>${time}</span>
+        ${tags ? `<span class="entry-meta">${tags}</span>` : ''}${note}
+      </span></button></li>`;
+  }
+  const sev = Number.isFinite(e.severity) ? e.severity : 0;
+  const pips = sev > 0
+    ? `<span class="pips" role="img" aria-label="Severity ${sev} of 3">${[1, 2, 3].map((n) => `<span class="pip${n <= sev ? ' on' : ''}"></span>`).join('')}</span>`
+    : '';
+  const flags = (e.flags || []).map((f) => `<span class="flag${f === 'blood' ? ' alert' : ''}">${esc(FLAG_LABELS[f] || f)}</span>`).join('');
+  return `<li><button class="entry symptom" data-act="edit-symptom" data-id="${e.id}">
+    <span class="entry-ico">${ICON[e.cat] || ICON.other}</span>
+    <span class="entry-main">
+      <span class="entry-top"><span class="entry-name">${esc(symptomName(e))}</span>${time}</span>
+      ${pips || flags ? `<span class="entry-meta">${pips}${flags}</span>` : ''}${note}
+    </span></button></li>`;
+}
+
+// Exposure banners and reintroduction watch cards, shown on today's page.
+function todayCardsHtml(now) {
+  const banners = exposureBanners(S, now).map((b) => {
+    const label = tagLabel(S.settings, b.tag);
+    const what = b.uncertain ? `Possible hidden ${label.toLowerCase()}` : label;
+    return `<div class="banner" role="status">${ICON.alert}
+      <p>${esc(`${what} logged ${weekdayTime(b.ts)} during elimination. Watch the next 24 to 72h.`)}</p>
+      <button class="xbtn" data-act="dismiss" data-key="${esc(b.key)}" aria-label="Dismiss">${ICON.close}</button>
+    </div>`;
+  }).join('');
+  return banners + reintroWatches(S, now).map(watchHtml).join('');
+}
+
+function pointsText(x) {
+  return x.count ? `${plural(x.points, 'symptom point')} from ${plural(x.count, 'entry', 'entries')}` : 'No symptoms logged';
+}
+
+function watchHtml(w) {
+  const label = tagLabel(S.settings, w.phase.tag);
+  const food = label.toLowerCase();
+  const [latest, ...earlier] = w.exposures;
+  let main;
+  if (latest && latest.watching) {
+    const pct = Math.round(((WATCH_HOURS - latest.hoursLeft) / WATCH_HOURS) * 100);
+    main = `<h3>Watching ${esc(food)}: ${Math.ceil(latest.hoursLeft)}h to go</h3>
+      <div class="meter" role="progressbar" aria-label="Watch progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>
+      <p>${esc(pointsText(latest))} since ${esc(weekdayTime(latest.ts))}${latest.uncertain ? ' (possible exposure)' : ''}: ${esc(latest.name)}.</p>`;
+  } else if (latest) {
+    main = `<h3>Last ${esc(food)} watch is done</h3>
+      <p>${esc(pointsText(latest))} in the 72 hours after ${esc(weekdayTime(latest.ts))}.</p>`;
+  } else {
+    main = `<h3>Ready for the first try</h3>
+      <p>When you eat ${esc(food)}, log it as usual. The app watches the next 72 hours and keeps a running tally here.</p>`;
+  }
+  const history = earlier.slice(0, 3).map((x) =>
+    `<li>${esc(weekdayTime(x.ts))}: ${esc(pointsText(x).toLowerCase())}${x.watching ? ' so far' : ''}</li>`).join('');
+  return `<section class="card watch">
+    <div class="phase-top"><span class="tagpill sym">${esc(label)}</span><span class="status on">Reintroduction, day ${w.day}</span></div>
+    ${main}
+    ${history ? `<p class="fine">Earlier tries</p><ul class="plain">${history}</ul>` : ''}
+    <p class="fine">Reintroduce one food at a time, and watch 48 to 72 hours after each try.</p>
+  </section>`;
+}
+
+// ---- trends and phases ------------------------------------------------------------------
 function viewTrends() {
-  return empty('trends', 'Trends are resting',
-    'Log a few days of meals and symptoms and the trends will wake up.');
+  return empty('trends', 'Trends are resting', 'Log a few days of meals and symptoms and the trends will wake up.') +
+    '<p class="soon">Coming in build step 5: the symptom load chart, category strips, and the suspects list.</p>';
 }
 
 function viewPhases() {
   const now = nowTs();
   const list = sortPhases(S.phases, now);
-  const note = '<p class="soon">Coming in build step 3: adding, editing, and ending phases.</p>';
+  const add = `<button class="btn addbtn" data-act="add-phase">${ICON.plus}<span>Add a phase</span></button>`;
   if (!list.length) {
     return empty('phases', 'No phases yet',
-      'When a food comes out of your diet, or goes back in, it becomes a phase here.') + note;
+      'When a food comes out of your diet, or goes back in, add it here. Phases power the exposure alerts and the trend charts.') + add;
   }
-  return `<div class="stack">${list.map((p) => phaseCard(p, now)).join('')}</div>${note}`;
+  return `<div class="stack">${list.map((p) => phaseCard(p, now)).join('')}</div>${add}`;
 }
 
 function phaseCard(p, now) {
@@ -520,16 +864,16 @@ function phaseCard(p, now) {
   const active = isPhaseActive(p, now);
   const day = phaseDay(p, now);
   const what = `${label.toLowerCase()} ${kind}`;
-  const headline = day === 0 ? `Upcoming ${what}` : active ? `Day ${day} of ${what}` : `${day} days of ${what}`;
+  const headline = day === 0 ? `Upcoming ${what}` : active ? `Day ${day} of ${what}` : `${plural(day, 'day')} of ${what}`;
   const status = active ? 'Active' : day === 0 ? 'Upcoming' : 'Ended';
   const dates = `${day === 0 ? 'Starts' : 'Since'} ${fmtDate(p.start)}${p.end ? `, ended ${fmtDate(p.end)}` : ''}`;
   return `
-    <article class="card phase">
-      <div class="phase-top"><span class="tagpill">${esc(label)}</span><span class="status${active ? ' on' : ''}">${status}</span></div>
-      <h3>${esc(headline)}</h3>
-      <p class="fine">${esc(dates)}</p>
-      ${p.note ? `<p class="note">${esc(p.note)}</p>` : ''}
-    </article>`;
+    <button class="card phase" data-act="edit-phase" data-id="${p.id}">
+      <span class="phase-top"><span class="tagpill${p.kind === 'reintroduce' ? ' sym' : ''}">${esc(label)}</span><span class="status${active ? ' on' : ''}">${status}</span></span>
+      <span class="phase-title">${esc(headline)}</span>
+      <span class="fine">${esc(dates)}</span>
+      ${p.note ? `<span class="note">${esc(p.note)}</span>` : ''}
+    </button>`;
 }
 
 function viewMore() {
@@ -538,7 +882,8 @@ function viewMore() {
     <section class="card about">
       <div class="about-head">${ICON.lock}<h2>Private by design</h2></div>
       <p>Nothing you log leaves this phone. There's no account, no cloud copy, and no tracking.</p>
-      <p class="fine">Build ${BUILD} · ${isStandalone() ? 'Home Screen app' : 'running in the browser'}</p>
+      <p class="fine">Build ${BUILD} · ${isStandalone() ? 'Home Screen app' : 'running in the browser'}${U.fit
+        ? ` · screen ${U.fit.screen}, window ${U.fit.window}, top inset ${U.fit.insetTop}, using ${U.fit.h}` : ''}</p>
     </section>
     <p class="soon">Coming in build step 6:</p>
     <ul class="list card">${soon.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>`;
@@ -546,10 +891,14 @@ function viewMore() {
 
 // ---- sheets ------------------------------------------------------------------------------
 // Bottom sheets over the current tab. Dismiss by swiping down or tapping the
-// scrim; a dirty sheet asks before throwing typed input away.
-let sheet = null;   // { el, scrim, isDirty }
+// scrim; a dirty sheet asks before throwing input away. Each sheet keeps its
+// own draft and handles its own data-act buttons and fields.
+let sheet = null;   // { el, scrim, isDirty, actions, onField, onClosed }
 
-function openSheet({ title, body, foot = '', isDirty = () => false }) {
+function openSheet({ title, body, foot = '', isDirty = () => false, actions = {}, onField = null, onClosed = null }) {
+  if (sheet) closeSheet(true);
+  // A live Undo or Time button must never float over a different sheet.
+  if (performance.now() >= errorUntil) hideToast();
   const scrim = document.createElement('div');
   scrim.className = 'scrim';
   scrim.dataset.act = 'close-sheet';
@@ -561,15 +910,55 @@ function openSheet({ title, body, foot = '', isDirty = () => false }) {
   el.innerHTML = `<div class="grab" aria-hidden="true"></div>
     <header class="sheet-head"><h2>${esc(title)}</h2></header>
     <div class="sheet-body">${body}</div>
-    ${foot ? `<footer class="sheet-foot">${foot}</footer>` : ''}`;
+    <footer class="sheet-foot">${foot}</footer>`;
   $('#layer').append(scrim, el);
-  sheet = { el, scrim, isDirty };
+  sheet = { el, scrim, isDirty, actions, onField, onClosed };
   $('#app').inert = true;
   wireSheetDrag(el);
   el.getBoundingClientRect();   // commit the off-screen position so the slide-in animates
   scrim.classList.add('in');
   el.classList.add('in');
   return el;
+}
+
+// Swap a sheet's body (and its footer, when switching modes), keeping scroll.
+function fillSheet({ body, foot = null }) {
+  if (!sheet) return;
+  const b = sheet.el.querySelector('.sheet-body');
+  const top = b.scrollTop;
+  b.innerHTML = body;
+  b.scrollTop = top;
+  if (foot != null) sheet.el.querySelector('.sheet-foot').innerHTML = foot;
+}
+
+// Replace one region of a sheet without touching the field being typed in.
+function patch(region, html) {
+  const r = sheet && sheet.el.querySelector(`[data-region="${region}"]`);
+  if (r) r.innerHTML = html;
+}
+
+// Scroll the sheet body just enough to show an element (the blood caption,
+// say). Done by hand: scrollIntoView can also scroll the locked page body.
+function revealInSheet(selector) {
+  const body = sheet && sheet.el.querySelector('.sheet-body');
+  const target = body && body.querySelector(selector);
+  if (!target) return;
+  const overflow = target.getBoundingClientRect().bottom - body.getBoundingClientRect().bottom;
+  if (overflow > 0) body.scrollTop += overflow + 12;
+}
+
+// Footers are updated in place, never re-rendered while a sheet is in use:
+// typing and then tapping Save blurs the field mid-tap, and if that field's
+// change event replaced the button, the tap would land on nothing.
+function setFoot({ hint = '', disabled = false, label = null }) {
+  if (!sheet) return;
+  const foot = sheet.el.querySelector('.sheet-foot');
+  const h = foot.querySelector('.foot-hint');
+  if (h) h.textContent = hint;
+  const b = foot.querySelector('[data-primary]');
+  if (!b) return;
+  b.disabled = disabled;
+  if (label != null) (b.querySelector('.clip') || b).textContent = label;
 }
 
 async function requestCloseSheet() {
@@ -585,15 +974,22 @@ async function requestCloseSheet() {
   closeSheet();
 }
 
-function closeSheet() {
+function closeSheet(instant = false) {
   if (!sheet) return;
-  const { el, scrim } = sheet;
+  const { el, scrim, onClosed } = sheet;
   sheet = null;
+  $('#app').inert = false;
+  if (instant) {
+    el.remove();
+    scrim.remove();
+    return;
+  }
   el.classList.remove('dragging', 'in');
   el.style.transform = '';
   scrim.classList.remove('in');
-  $('#app').inert = false;
+  el.style.pointerEvents = scrim.style.pointerEvents = 'none';   // the fading layer must not eat the next tap
   setTimeout(() => { el.remove(); scrim.remove(); }, 320);
+  if (onClosed) onClosed();
 }
 
 function snapSheetBack() {
@@ -640,15 +1036,594 @@ function wireSheetDrag(el) {
   el.addEventListener('touchcancel', end);
 }
 
-function openPlaceholderSheet(kind) {
-  const food = kind === 'food';
+// ---- time control ------------------------------------------------------------------
+// Every entry's time defaults to now (or, when paging back through Today, that
+// day at the current clock time) and can be nudged or set to any past moment.
+const AGO = { now: 0, h1: 1, h3: 3 };
+
+function defaultWhen() {
+  return U.tab === 'today' && U.day ? { mode: 'at', ts: `${U.day}T${nowTs().slice(11)}` } : { mode: 'now' };
+}
+
+function resolveWhen(w) {
+  const now = nowTs();
+  if (w.mode in AGO) return addHours(now, -AGO[w.mode]);
+  return w.ts > now ? now : w.ts;
+}
+
+function whenHtml(w) {
+  const chip = (mode, label) => `<button class="chip" data-act="when" data-mode="${mode}" aria-pressed="${w.mode === mode}">${label}</button>`;
+  return `<div class="when">
+    <div class="chips">${chip('now', 'Now')}${chip('h1', '1h ago')}${chip('h3', '3h ago')}</div>
+    <input class="date when-input" type="datetime-local" data-field="when" value="${resolveWhen(w)}" max="${nowTs()}" step="60" aria-label="Date and time">
+  </div>`;
+}
+
+// Updated in place, for the same reason as setFoot.
+function syncWhen(w) {
+  const r = sheet && sheet.el.querySelector('[data-region="when"]');
+  if (!r) return;
+  for (const c of r.querySelectorAll('[data-mode]')) c.setAttribute('aria-pressed', c.dataset.mode === w.mode);
+  const input = r.querySelector('input');
+  const ts = resolveWhen(w);
+  if (input.value.slice(0, 16) !== ts) input.value = ts;
+  input.max = nowTs();
+}
+const whenAction = (d) => (b) => { d.when = { mode: b.dataset.mode }; syncWhen(d.when); };
+function whenField(d, input) {
+  const now = nowTs();
+  const v = input.value.slice(0, 16);
+  d.when = { mode: 'at', ts: !v ? now : v > now ? now : v };
+  syncWhen(d.when);
+}
+
+// ---- meal tagging ----------------------------------------------------------------------
+// The one place allergen tags get chosen, for new meals, logged entries, and
+// saved meals alike. A later suggest-tags step can fill the draft before this
+// renders, without touching the sheets that use it.
+function tagPickerHtml(d) {
+  const shown = allTags(S.settings).filter((t) => !t.hidden || tagState(d, t.id) !== 'off');
+  const chips = shown.map((t) => {
+    const st = tagState(d, t.id);
+    return `<button class="chip" data-act="tag" data-tag="${t.id}" aria-pressed="${st === 'on' ? 'true' : st === 'maybe' ? 'mixed' : 'false'}">${esc(t.label)}</button>`;
+  }).join('');
+  return `<div class="chips tagpick">${chips}</div>
+    <p class="hint">Tap once if it's in the meal. Tap again for possibly hidden, like takeout or packaged food.</p>`;
+}
+
+const tagAction = (d, after) => (b) => {
+  Object.assign(d, cycleTag(d, b.dataset.tag));
+  const st = tagState(d, b.dataset.tag);
+  b.setAttribute('aria-pressed', st === 'on' ? 'true' : st === 'maybe' ? 'mixed' : 'false');
+  if (after) after();
+};
+
+function mealTagsText(m) {
+  return [...m.tags.map((t) => tagLabel(S.settings, t)), ...m.uncertain.map((t) => `${tagLabel(S.settings, t)}?`)].join(' · ');
+}
+
+const hasFoodInput = (d) => !!(d.name.trim() || d.tags.length || d.uncertain.length);
+const sameTags = (a, b) => a.tags.length === b.tags.length && a.uncertain.length === b.uncertain.length &&
+  a.tags.every((t) => b.tags.includes(t)) && a.uncertain.every((t) => b.uncertain.includes(t));
+const foodName = (d) => d.name.trim() || autoMealName(S.settings, d.tags, d.uncertain);
+
+function foodFieldsHtml(d, { withSave = false } = {}) {
+  return `
+    <label class="sect"><span class="sect-label">Meal</span>
+      <input class="input" type="text" data-field="name" value="${esc(d.name)}" placeholder="What did you eat?" maxlength="80" autocomplete="off" enterkeyhint="done"></label>
+    <div class="sect"><span class="sect-label">Allergens</span><div data-region="tags">${tagPickerHtml(d)}</div></div>
+    ${'note' in d ? `<label class="sect"><span class="sect-label">Note</span>
+      <textarea class="textarea" data-field="note" rows="2" maxlength="500" placeholder="Optional">${esc(d.note)}</textarea></label>` : ''}
+    ${withSave ? `<button class="switchrow" data-act="save-toggle" role="switch" aria-checked="${d.save}"><span>Save to my meals</span><span class="switch" aria-hidden="true"></span></button>` : ''}
+    ${'when' in d ? `<div class="sect"><span class="sect-label">When</span><div data-region="when">${whenHtml(d.when)}</div></div>` : ''}`;
+}
+
+// ---- + food ----------------------------------------------------------------------------
+function openFoodSheet(draft = null) {
+  const d = draft || { mode: S.meals.length ? 'pick' : 'new', q: '', name: '', tags: [], uncertain: [], note: '', save: true, when: defaultWhen() };
+  const view = () => (d.mode === 'pick'
+    ? { body: foodPickBody(d), foot: foodPickFoot(d) }
+    : { body: foodFieldsHtml(d, { withSave: true }), foot: foodNewFoot(d) });
   openSheet({
-    title: food ? 'Log food' : 'Log a symptom',
-    body: `<p class="soon">Coming in build step 2: ${food
-      ? 'your meal library, allergen tags, and two-tap repeat meals'
-      : 'symptom categories with severity guides, flags, and quick time nudges'}.</p>`,
-    foot: `<button class="btn btn-${kind}" data-act="close-sheet">Got it</button>`,
+    title: 'Log food',
+    ...view(),
+    isDirty: () => !!(d.q.trim() || hasFoodInput(d) || d.note.trim()),
+    actions: {
+      'meal-log': (b) => logMeal(b.dataset.id, d),
+      'meal-edit': (b) => openMealSheet(b.dataset.id, () => openFoodSheet(d)),   // comes back with the draft intact
+      'meal-new': () => {
+        d.mode = 'new';
+        if (!d.name.trim()) d.name = d.q.trim();
+        fillSheet(view());
+        if (!d.name) sheet.el.querySelector('[data-field="name"]').focus();
+      },
+      'food-back': () => { d.mode = 'pick'; fillSheet(view()); },
+      tag: tagAction(d, () => setFoot(foodNewState(d))),
+      'save-toggle': (b) => { d.save = !d.save; b.setAttribute('aria-checked', d.save); },
+      when: whenAction(d),
+      'food-log': () => logNewFood(d),
+    },
+    onField: (t, type) => {
+      const f = t.dataset.field;
+      if (f === 'when') { if (type === 'change') whenField(d, t); return; }
+      if (type !== 'input') return;
+      if (f === 'q') { d.q = t.value; patch('results', mealResultsHtml(d)); setFoot({ label: foodPickLabel(d) }); }
+      else if (f === 'name') { d.name = t.value; setFoot(foodNewState(d)); }
+      else if (f === 'note') d.note = t.value;
+    },
   });
+  if (d.mode === 'new') sheet.el.querySelector('[data-field="name"]').focus();
+}
+
+function foodPickBody(d) {
+  return `
+    <label class="search">${ICON.search}<span class="sr">Search your meals</span>
+      <input class="input" type="search" data-field="q" value="${esc(d.q)}" placeholder="Search your meals" autocomplete="off" autocorrect="off" enterkeyhint="search"></label>
+    <div data-region="results">${mealResultsHtml(d)}</div>`;
+}
+
+const foodPickLabel = (d) => (d.q.trim() ? `New meal: ${d.q.trim()}` : 'New meal');
+function foodPickFoot(d) {
+  return `<button class="btn btn-food" data-act="meal-new" data-primary>${ICON.plus}<span class="clip">${esc(foodPickLabel(d))}</span></button>`;
+}
+
+function mealChipHtml(m) {
+  const tags = mealTagsText(m);
+  return `<button class="meal-chip" data-act="meal-log" data-hold="meal-edit" data-id="${m.id}">
+    <span class="mc-name">${esc(m.name)}</span>${tags ? `<span class="mc-tags">${esc(tags)}</span>` : ''}</button>`;
+}
+
+function mealResultsHtml(d) {
+  const q = d.q.trim();
+  if (q) {
+    const hits = searchMeals(S.meals, q);
+    return hits.length
+      ? `<p class="sect sect-label">Matching meals</p><div class="meal-grid">${hits.slice(0, 24).map(mealChipHtml).join('')}</div>`
+      : `<p class="hint">No saved meal matches &ldquo;${esc(q)}&rdquo;. Tap New meal below to log it.</p>`;
+  }
+  const when = d.when.mode === 'now' ? 'now' : `for ${whenLabel(resolveWhen(d.when))}`;
+  return `<p class="sect sect-label">Tap a meal to log it ${esc(when)}</p>
+    <div class="meal-grid">${rankMeals(S.meals, nowTs()).map(mealChipHtml).join('')}</div>
+    <p class="hint">Press and hold a meal to edit it.</p>`;
+}
+
+const foodNewState = (d) => ({ hint: hasFoodInput(d) ? '' : 'Name the meal, or tap an allergen.', disabled: !hasFoodInput(d) });
+
+function foodNewFoot(d) {
+  const { hint, disabled } = foodNewState(d);
+  const back = S.meals.length
+    ? '<button class="btn" data-act="food-back">Back</button>'
+    : '<button class="btn" data-act="close-sheet">Cancel</button>';
+  return `<p class="foot-hint">${hint}</p>
+    <div class="foot-row">${back}<button class="btn btn-food" data-act="food-log" data-primary${disabled ? ' disabled' : ''}>Log food</button></div>`;
+}
+
+function logMeal(id, d) {
+  const m = S.meals.find((x) => x.id === id);
+  if (!m) return;
+  const ts = resolveWhen(d.when);
+  const before = { useCount: m.useCount, lastUsed: m.lastUsed };
+  const ev = { id: newId(), ts, mealId: m.id, name: m.name, tags: [...m.tags], uncertain: [...m.uncertain], note: '' };
+  S.foodLog.push(ev);
+  m.useCount = (m.useCount || 0) + 1;
+  m.lastUsed = nowTs();
+  save();
+  closeSheet();
+  render();
+  toast(`Logged ${m.name}, ${whenLabel(ts)}`, {
+    ms: 7000,
+    actions: [
+      { label: 'Time', fn: () => openTimeSheet(ev.id) },
+      { label: 'Undo', fn: () => undoFood(ev.id, m.id, before, false) },
+    ],
+  });
+}
+
+function logNewFood(d) {
+  if (!hasFoodInput(d)) return;
+  const name = foodName(d);
+  const ts = resolveWhen(d.when);
+  let meal = null, created = false, before = null, retagged = false;
+  if (d.save) {
+    // Logging a name that's already saved reuses that meal rather than adding
+    // a twin, and the library takes the allergens just logged. Keeping the old
+    // ones would make every later two-tap log of it repeat the wrong tags.
+    meal = findMealByName(S.meals, name);
+    if (!meal) {
+      meal = { id: newId(), name, tags: [...d.tags], uncertain: [...d.uncertain], useCount: 0, lastUsed: null };
+      S.meals.push(meal);
+      created = true;
+    }
+    before = { useCount: meal.useCount, lastUsed: meal.lastUsed, tags: [...meal.tags], uncertain: [...meal.uncertain] };
+    retagged = !created && !sameTags(meal, d);
+    Object.assign(meal, { tags: [...d.tags], uncertain: [...d.uncertain] });
+    meal.useCount = (meal.useCount || 0) + 1;
+    meal.lastUsed = nowTs();
+  }
+  const ev = { id: newId(), ts, mealId: meal ? meal.id : null, name, tags: [...d.tags], uncertain: [...d.uncertain], note: d.note.trim() };
+  S.foodLog.push(ev);
+  save();
+  closeSheet();
+  render();
+  toast(`Logged ${name}, ${whenLabel(ts)}.${retagged ? ' Saved meal updated.' : ''}`, {
+    ms: 7000,
+    actions: [{ label: 'Undo', fn: () => undoFood(ev.id, meal && meal.id, before, created) }],
+  });
+}
+
+function undoFood(eventId, mealId, before, createdMeal) {
+  S.foodLog = S.foodLog.filter((e) => e.id !== eventId);
+  const m = mealId && S.meals.find((x) => x.id === mealId);
+  if (m && createdMeal && !S.foodLog.some((e) => e.mealId === mealId)) S.meals = S.meals.filter((x) => x.id !== mealId);
+  else if (m && before) Object.assign(m, before);
+  save();
+  render();
+  toast('Removed.');
+}
+
+// The toast's "Time" shortcut: a small sheet with only the time control.
+function openTimeSheet(id) {
+  const ev = S.foodLog.find((e) => e.id === id);
+  if (!ev) return;
+  const d = { when: { mode: 'at', ts: ev.ts } };
+  const start = ev.ts;
+  openSheet({
+    title: `When did you eat ${ev.name}?`,
+    body: `<div data-region="when">${whenHtml(d.when)}</div>`,
+    foot: '<button class="btn btn-food" data-act="time-save">Save time</button>',
+    isDirty: () => resolveWhen(d.when) !== start,
+    actions: {
+      when: whenAction(d),
+      'time-save': () => {
+        ev.ts = resolveWhen(d.when);
+        save();
+        closeSheet();
+        render();
+        toast(`Moved to ${whenLabel(ev.ts)}.`);
+      },
+    },
+    onField: (t, type) => { if (t.dataset.field === 'when' && type === 'change') whenField(d, t); },
+  });
+}
+
+function openFoodEdit(id) {
+  const ev = S.foodLog.find((e) => e.id === id);
+  if (!ev) return;
+  const d = { name: ev.name, tags: [...(ev.tags || [])], uncertain: [...(ev.uncertain || [])], note: ev.note || '', when: { mode: 'at', ts: ev.ts } };
+  const start = JSON.stringify(d);
+  openSheet({
+    title: 'Edit food',
+    body: `${ev.mealId ? '<p class="lede">Changes here affect only this entry, not your saved meal.</p>' : ''}${foodFieldsHtml(d)}`,
+    foot: `<p class="foot-hint"></p>
+      <div class="foot-row"><button class="btn btn-quiet-danger" data-act="delete">Delete</button>
+      <button class="btn btn-food" data-act="save" data-primary>Save</button></div>`,
+    isDirty: () => JSON.stringify(d) !== start,
+    actions: {
+      tag: tagAction(d, () => setFoot(foodNewState(d))),
+      when: whenAction(d),
+      save: () => {
+        if (!hasFoodInput(d)) return;
+        Object.assign(ev, { name: foodName(d), tags: [...d.tags], uncertain: [...d.uncertain], note: d.note.trim(), ts: resolveWhen(d.when) });
+        save();
+        closeSheet();
+        render();
+        toast(dayKey(ev.ts) === viewDay() ? 'Saved.' : `Saved, and moved to ${whenLabel(ev.ts)}.`);
+      },
+      delete: () => deleteEntry('food', id),
+    },
+    onField: (t, type) => {
+      const f = t.dataset.field;
+      if (f === 'when') { if (type === 'change') whenField(d, t); return; }
+      if (type !== 'input') return;
+      if (f === 'name') { d.name = t.value; setFoot(foodNewState(d)); }
+      else if (f === 'note') d.note = t.value;
+    },
+  });
+}
+
+// Editing a saved meal changes future logs only; entries keep their copies.
+function openMealSheet(id, back = null) {
+  const m = S.meals.find((x) => x.id === id);
+  if (!m) return;
+  const d = { name: m.name, tags: [...m.tags], uncertain: [...m.uncertain] };
+  const start = JSON.stringify(d);
+  const foot = `<div class="foot-row"><button class="btn btn-quiet-danger" data-act="remove">Remove</button>
+    <button class="btn btn-food" data-act="save" data-primary>Save meal</button></div>`;
+  closeSheet(true);
+  openSheet({
+    title: 'Edit saved meal',
+    body: `<p class="lede">Changes apply the next time you log it. Past entries keep what they were logged with.</p>
+      ${foodFieldsHtml(d)}
+      <p class="fine sect">Logged ${plural(m.useCount || 0, 'time')}.</p>`,
+    foot,
+    isDirty: () => JSON.stringify(d) !== start,
+    actions: {
+      tag: tagAction(d),
+      save: () => {
+        if (!d.name.trim()) return;
+        Object.assign(m, { name: d.name.trim(), tags: [...d.tags], uncertain: [...d.uncertain] });
+        save();
+        closeSheet();
+        toast('Meal saved.');
+      },
+      remove: async () => {
+        const ok = await confirmDialog({
+          title: `Remove ${m.name} from your meals?`, body: 'Past entries stay in the diary.',
+          ok: 'Remove', cancel: 'Keep it', danger: true,
+        });
+        if (!ok) return;
+        S.meals = S.meals.filter((x) => x.id !== m.id);
+        save();
+        closeSheet();
+        toast('Meal removed.');
+      },
+    },
+    onField: (t, type) => {
+      if (t.dataset.field === 'name' && type === 'input') { d.name = t.value; setFoot({ disabled: !d.name.trim() }); }
+    },
+    onClosed: back,   // back to the food sheet it was opened from
+  });
+}
+
+async function deleteEntry(kind, id) {
+  const list = kind === 'food' ? 'foodLog' : 'symptomLog';
+  const ev = S[list].find((e) => e.id === id);
+  if (!ev) return;
+  const ok = await confirmDialog({
+    title: 'Delete this entry?', body: `${kind === 'food' ? ev.name : symptomName(ev)}, ${whenLabel(ev.ts)}`,
+    ok: 'Delete', cancel: 'Keep it', danger: true,
+  });
+  if (!ok) return;
+  S[list] = S[list].filter((e) => e.id !== id);
+  save();
+  closeSheet();
+  render();
+  toast('Entry deleted.', { actions: [{ label: 'Undo', fn: () => { S[list].push(ev); save(); render(); } }] });
+}
+
+// ---- + symptom -------------------------------------------------------------------------
+// Common case, a loose diaper: + symptom, Stool, Loose, Log. Four taps.
+function openSymptomSheet(id = null) {
+  const ev = id ? S.symptomLog.find((e) => e.id === id) : null;
+  if (id && !ev) return;
+  const d = ev
+    ? { cat: ev.cat, severity: ev.cat === 'stool' ? null : ev.severity, consistency: ev.consistency || null, flags: [...(ev.flags || [])], note: ev.note || '', when: { mode: 'at', ts: ev.ts } }
+    : { cat: null, severity: null, consistency: null, flags: [], note: '', when: defaultWhen() };
+  const start = JSON.stringify(d);
+  const refresh = () => { fillSheet({ body: symptomBody(d) }); setFoot(symptomState(d, !!ev)); };
+  openSheet({
+    title: ev ? 'Edit symptom' : 'Log a symptom',
+    body: symptomBody(d),
+    foot: symptomFoot(d, !!ev),
+    isDirty: ev ? () => JSON.stringify(d) !== start : () => !!(d.severity != null || d.consistency || d.flags.length || d.note.trim()),
+    actions: {
+      cat: (b) => {
+        const c = b.dataset.cat;
+        if (c !== d.cat) {
+          Object.assign(d, { cat: c, severity: null, consistency: null });
+          d.flags = d.flags.filter((f) => (CAT_FLAGS[c] || []).includes(f));
+        }
+        refresh();
+      },
+      sev: (b) => { d.severity = +b.dataset.sev; refresh(); },
+      stool: (b) => { d.consistency = b.dataset.stool; refresh(); },
+      flag: (b) => {
+        const f = b.dataset.flag;
+        d.flags = d.flags.includes(f) ? d.flags.filter((x) => x !== f) : [...d.flags, f];
+        refresh();
+        if (f === 'blood' && d.flags.includes('blood')) revealInSheet('.caution');
+      },
+      when: whenAction(d),
+      'sym-log': () => saveSymptom(d, ev),
+      delete: () => deleteEntry('symptom', ev.id),
+    },
+    onField: (t, type) => {
+      if (t.dataset.field === 'note') d.note = t.value;
+      else if (t.dataset.field === 'when' && type === 'change') whenField(d, t);
+    },
+  });
+}
+
+const noteHtml = (d, label, placeholder) => `<label class="sect"><span class="sect-label">${label}</span>
+  <textarea class="textarea" data-field="note" rows="2" maxlength="500" placeholder="${placeholder}">${esc(d.note)}</textarea></label>`;
+
+function symptomBody(d) {
+  const cats = SYMPTOM_CATS.map((c) =>
+    `<button class="cat" data-act="cat" data-cat="${c}" aria-pressed="${d.cat === c}">${ICON[c]}<span>${CATS[c].label}</span></button>`).join('');
+  return `<div class="cat-grid" role="group" aria-label="What did you notice?">${cats}</div>${d.cat ? symptomDetailHtml(d) : ''}`;
+}
+
+function symptomDetailHtml(d) {
+  const c = d.cat;
+  let html = c === 'other' ? noteHtml(d, 'What happened?', 'Describe it') : '';
+  if (c === 'stool') {
+    html += `<div class="sect"><span class="sect-label">Consistency</span><div class="opts" role="radiogroup" aria-label="Consistency">${STOOLS.map((s) => `
+      <button class="opt" role="radio" data-act="stool" data-stool="${s.id}" aria-checked="${d.consistency === s.id}">
+        <span class="num">${STOOL_SEVERITY[s.id]}</span><span class="opt-text">${s.label}${s.sub ? `<span class="opt-sub">${s.sub}</span>` : ''}</span></button>`).join('')}
+      </div></div>`;
+  } else {
+    html += `<div class="sect"><span class="sect-label">How bad?</span><div class="opts" role="radiogroup" aria-label="Severity">${[1, 2, 3].map((n) => `
+      <button class="opt" role="radio" data-act="sev" data-sev="${n}" aria-checked="${d.severity === n}">
+        <span class="num">${n}</span><span class="opt-text">${esc(CATS[c].anchors[n - 1])}${c === 'resp' && n === 3 ? `<span class="opt-warn">${RESP_WARNING}</span>` : ''}</span></button>`).join('')}
+      </div></div>`;
+  }
+  if (CAT_FLAGS[c]) {
+    html += `<div class="sect"><span class="sect-label">Also noticed</span>
+      <div class="chips flagpick">${CAT_FLAGS[c].map((f) => `<button class="chip" data-act="flag" data-flag="${f}" aria-pressed="${d.flags.includes(f)}">${FLAG_LABELS[f]}</button>`).join('')}</div>
+      ${d.flags.includes('blood') ? `<p class="caution" role="note">${ICON.alert}<span>${BLOOD_WARNING}</span></p>` : ''}</div>`;
+  }
+  html += `<div class="sect"><span class="sect-label">When</span><div data-region="when">${whenHtml(d.when)}</div></div>`;
+  if (c !== 'other') html += noteHtml(d, 'Note', 'Optional');
+  return html;
+}
+
+const SYMPTOM_HINTS = {
+  category: 'Pick what you noticed.',
+  consistency: 'Pick a consistency.',
+  severity: 'Pick how bad it is.',
+  formed: 'A formed stool is normal. Add mucus or blood to log it.',
+};
+
+function symptomState(d, editing) {
+  const missing = symptomMissing(d);
+  return {
+    hint: SYMPTOM_HINTS[missing] || '',
+    disabled: !!missing,
+    label: editing ? 'Save' : missing ? 'Log' : `Log ${symptomName(d).toLowerCase()}`,
+  };
+}
+
+function symptomFoot(d, editing) {
+  const { hint, disabled, label } = symptomState(d, editing);
+  const btn = `<button class="btn btn-symptom" data-act="sym-log" data-primary${disabled ? ' disabled' : ''}>${esc(label)}</button>`;
+  return `<p class="foot-hint">${hint}</p>${editing
+    ? `<div class="foot-row"><button class="btn btn-quiet-danger" data-act="delete">Delete</button>${btn}</div>`
+    : btn}`;
+}
+
+function saveSymptom(d, ev) {
+  if (symptomMissing(d)) return;
+  const fields = symptomFields(d);
+  const ts = resolveWhen(d.when);
+  if (ev) {
+    delete ev.consistency;
+    Object.assign(ev, fields, { ts });
+    save();
+    closeSheet();
+    render();
+    toast(dayKey(ts) === viewDay() ? 'Saved.' : `Saved, and moved to ${whenLabel(ts)}.`);
+    return;
+  }
+  const e = { id: newId(), ts, ...fields };
+  S.symptomLog.push(e);
+  save();
+  closeSheet();
+  render();
+  toast(`Logged ${symptomName(e).toLowerCase()}, ${whenLabel(ts)}`, {
+    ms: 6000,
+    actions: [{ label: 'Undo', fn: () => { S.symptomLog = S.symptomLog.filter((x) => x.id !== e.id); save(); render(); toast('Removed.'); } }],
+  });
+}
+
+// ---- phases ------------------------------------------------------------------------------
+function openPhaseSheet(id = null) {
+  const p = id ? S.phases.find((x) => x.id === id) : null;
+  if (id && !p) return;
+  const today = todayKey();
+  const d = p
+    ? { kind: p.kind, tag: p.tag, start: dayKey(p.start), ended: p.end != null, end: p.end ? dayKey(p.end) : today, note: p.note || '' }
+    : { kind: 'eliminate', tag: null, start: today, ended: false, end: today, note: '', closeElim: true };
+  const start = JSON.stringify(d);
+  const refresh = () => { fillSheet({ body: phaseBody(d, p) }); setFoot(phaseState(d)); };
+  openSheet({
+    title: p ? 'Edit phase' : 'Add a phase',
+    body: phaseBody(d, p),
+    foot: phaseFoot(d, p),
+    isDirty: () => JSON.stringify(d) !== start,
+    actions: {
+      kind: (b) => { d.kind = b.dataset.kind; refresh(); },
+      ptag: (b) => { d.tag = b.dataset.tag; refresh(); },
+      ended: (b) => { d.ended = b.dataset.ended === '1'; refresh(); },
+      'close-elim': (b) => { d.closeElim = !d.closeElim; b.setAttribute('aria-checked', d.closeElim); },
+      'phase-save': () => savePhase(d, p),
+      delete: () => deletePhase(p),
+    },
+    onField: (t, type) => {
+      const f = t.dataset.field;
+      if (f === 'note') d.note = t.value;
+      else if ((f === 'start' || f === 'end') && type === 'change') {
+        d[f] = t.value || today;
+        if (f === 'start') patch('closing', closingHtml(d, p));
+        setFoot(phaseState(d));
+      }
+    },
+  });
+}
+
+// Offer to end a running elimination when its food's reintroduction begins.
+function closingHtml(d, p) {
+  const closing = !p && !d.ended && d.kind === 'reintroduce' && d.tag ? phasesToClose(S.phases, d.tag, `${d.start}T00:00`) : [];
+  return closing.length ? `<button class="switchrow" data-act="close-elim" role="switch" aria-checked="${d.closeElim}">
+    <span>Also end the ${esc(tagLabel(S.settings, d.tag).toLowerCase())} elimination when this starts</span><span class="switch" aria-hidden="true"></span></button>` : '';
+}
+
+function phaseBody(d, p) {
+  const tags = allTags(S.settings).filter((t) => !t.hidden || t.id === d.tag);
+  const seg = (act, key, value, label, on) => `<button data-act="${act}" data-${key}="${value}" aria-pressed="${on}">${label}</button>`;
+  return `
+    <div class="sect"><span class="sect-label">Type</span>
+      <div class="seg">${seg('kind', 'kind', 'eliminate', 'Eliminate', d.kind === 'eliminate')}${seg('kind', 'kind', 'reintroduce', 'Reintroduce', d.kind === 'reintroduce')}</div>
+      <p class="hint">${d.kind === 'eliminate' ? 'Taking a food out of your diet.' : 'Bringing one food back. Watch 48 to 72 hours after each try before changing anything else.'}</p>
+    </div>
+    <div class="sect"><span class="sect-label">Food</span>
+      <div class="chips">${tags.map((t) => `<button class="chip" data-act="ptag" data-tag="${t.id}" aria-pressed="${d.tag === t.id}">${esc(t.label)}</button>`).join('')}</div>
+      <div data-region="closing">${closingHtml(d, p)}</div>
+    </div>
+    <label class="sect"><span class="sect-label">Started</span><input class="date wide" type="date" data-field="start" value="${d.start}"></label>
+    <div class="sect"><span class="sect-label">Status</span>
+      <div class="seg">${seg('ended', 'ended', '0', 'Still going', !d.ended)}${seg('ended', 'ended', '1', 'Ended', d.ended)}</div>
+      ${d.ended ? `<label class="sect"><span class="sect-label">Ended on</span><input class="date wide" type="date" data-field="end" value="${d.end}"></label>` : ''}
+    </div>
+    ${noteHtml(d, 'Note', 'Optional')}`;
+}
+
+function phaseProblem(d) {
+  if (!d.tag) return 'Pick a food.';
+  if (d.ended && d.end <= d.start) return 'The end date needs to be after the start date.';
+  return '';
+}
+
+const phaseState = (d) => ({ hint: phaseProblem(d), disabled: !!phaseProblem(d) });
+
+function phaseFoot(d, p) {
+  const problem = phaseProblem(d);
+  const btn = `<button class="btn btn-primary" data-act="phase-save" data-primary${problem ? ' disabled' : ''}>${p ? 'Save' : 'Add phase'}</button>`;
+  return `<p class="foot-hint">${problem}</p>${p
+    ? `<div class="foot-row"><button class="btn btn-quiet-danger" data-act="delete">Delete</button>${btn}</div>`
+    : btn}`;
+}
+
+function savePhase(d, p) {
+  if (phaseProblem(d)) return;
+  const fields = { kind: d.kind, tag: d.tag, start: `${d.start}T00:00`, end: d.ended ? `${d.end}T00:00` : null, note: d.note.trim() };
+  let msg = p ? 'Phase saved.' : 'Phase added.';
+  if (p) {
+    Object.assign(p, fields);
+  } else {
+    const phase = { id: newId(), ...fields };
+    if (d.kind === 'reintroduce' && !d.ended && d.closeElim) {
+      const closing = phasesToClose(S.phases, d.tag, fields.start);
+      for (const x of closing) x.end = fields.start;
+      if (closing.length) {
+        phase.closes = closing.map((x) => x.id);   // lets deleting this phase reopen them
+        msg = `Phase added, and the ${tagLabel(S.settings, d.tag).toLowerCase()} elimination ended.`;
+      }
+    }
+    S.phases.push(phase);
+  }
+  save();
+  closeSheet();
+  render();
+  toast(msg);
+}
+
+async function deletePhase(p) {
+  const label = `${tagLabel(S.settings, p.tag)} ${p.kind === 'reintroduce' ? 'reintroduction' : 'elimination'}`;
+  const ok = await confirmDialog({
+    title: 'Delete this phase?', body: `${label}, since ${fmtDate(p.start)}. Your food and symptom entries stay.`,
+    ok: 'Delete', cancel: 'Keep it', danger: true,
+  });
+  if (!ok) return;
+  S.phases = S.phases.filter((x) => x.id !== p.id);
+  // Reopen eliminations this reintroduction ended, unless they've been changed since.
+  const reopened = S.phases.filter((x) => (p.closes || []).includes(x.id) && x.end === p.start);
+  for (const x of reopened) x.end = null;
+  save();
+  closeSheet();
+  render();
+  toast(reopened.length
+    ? `Phase deleted, and the ${tagLabel(S.settings, p.tag).toLowerCase()} elimination is running again.`
+    : 'Phase deleted.');
 }
 
 // ---- dialogs and toast -----------------------------------------------------------------
@@ -673,6 +1648,7 @@ function confirmDialog({ title, body = '', ok = 'OK', cancel = 'Cancel', danger 
       dialog = null;
       el.classList.remove('in');
       scrim.classList.remove('in');
+      el.style.pointerEvents = scrim.style.pointerEvents = 'none';
       setTimeout(() => { el.remove(); scrim.remove(); }, 240);
       resolve(value);
     };
@@ -691,10 +1667,17 @@ function confirmDialog({ title, body = '', ok = 'OK', cancel = 'Cancel', danger 
 }
 
 let toastTimer = 0;
-function toast(msg, { action = '', onAction = null, ms = 4000 } = {}) {
+let errorUntil = 0;   // a save error outranks the "Logged" confirmation that would follow it
+function toast(msg, { actions = [], ms = 4000, error = false } = {}) {
+  if (!error && performance.now() < errorUntil) return;
+  if (error) errorUntil = performance.now() + ms;
   const el = $('#toast');
-  el.innerHTML = `<span>${esc(msg)}</span>${action ? `<button>${esc(action)}</button>` : ''}`;
-  el.onclick = (e) => { hideToast(); if (e.target.closest('button')) onAction?.(); };
+  el.innerHTML = `<span class="toast-msg">${esc(msg)}</span>${actions.map((a, i) => `<button data-i="${i}">${esc(a.label)}</button>`).join('')}`;
+  el.onclick = (e) => {
+    const b = e.target.closest('button');
+    hideToast();
+    if (b) actions[+b.dataset.i].fn();
+  };
   el.classList.add('in');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(hideToast, ms);
@@ -755,11 +1738,23 @@ async function checkForUpdate() {
 // ---- events --------------------------------------------------------------------------------
 const ACTIONS = {
   tab: (el) => setTab(el.dataset.tab),
-  'add-food': () => openPlaceholderSheet('food'),
-  'add-symptom': () => openPlaceholderSheet('symptom'),
+  'add-food': () => openFoodSheet(),
+  'add-symptom': () => openSymptomSheet(),
   'close-sheet': () => requestCloseSheet(),
   'apply-update': () => applyUpdate(),
   'check-update': () => checkForUpdate(),
+  'edit-food': (el) => openFoodEdit(el.dataset.id),
+  'edit-symptom': (el) => openSymptomSheet(el.dataset.id),
+  'edit-phase': (el) => openPhaseSheet(el.dataset.id),
+  'add-phase': () => openPhaseSheet(),
+  'day-prev': () => pageDay(-1),
+  'day-next': () => pageDay(1),
+  'day-today': () => { U.day = null; render(); },
+  dismiss: (el) => {
+    S.dismissed = [...pruneDismissed(S, nowTs()), el.dataset.key];
+    save();
+    render();
+  },
   'ob-next': () => obGo(1),
   'ob-back': () => obGo(-1),
   'ob-pick': (el) => {
@@ -780,23 +1775,75 @@ function obGo(delta) {
   renderOnboard();
 }
 
+// Press and hold on anything with data-hold runs that action instead of a tap.
+let holdTimer = 0;
+let holdStart = null;
+let holdFired = false;
+let suppressClickUntil = 0;
+function runHold(el) {
+  holdFired = true;
+  suppressClickUntil = performance.now() + 800;
+  const act = el.dataset.hold;
+  const fn = (sheet && sheet.el.contains(el) && sheet.actions[act]) || ACTIONS[act];
+  if (fn) fn(el);
+}
+document.addEventListener('touchstart', (e) => {
+  clearTimeout(holdTimer);
+  holdFired = false;
+  const el = e.target.closest('[data-hold]');
+  if (!el || e.touches.length !== 1) { holdStart = null; return; }
+  holdStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  holdTimer = setTimeout(() => runHold(el), 500);
+}, { passive: true });
+document.addEventListener('touchmove', (e) => {
+  if (holdStart && Math.hypot(e.touches[0].clientX - holdStart.x, e.touches[0].clientY - holdStart.y) > 10) clearTimeout(holdTimer);
+}, { passive: true });
+// Releasing a hold would otherwise send a click to whatever the new sheet put
+// under the finger (an allergen chip, Remove). Cancel it at the source.
+document.addEventListener('touchend', (e) => {
+  clearTimeout(holdTimer);
+  if (holdFired) {
+    holdFired = false;
+    e.preventDefault();
+  }
+}, { passive: false });
+document.addEventListener('touchcancel', () => clearTimeout(holdTimer));
+document.addEventListener('contextmenu', (e) => {
+  const el = e.target.closest('[data-hold]');
+  if (!el) return;
+  e.preventDefault();
+  clearTimeout(holdTimer);
+  if (performance.now() >= suppressClickUntil) runHold(el);
+});
+
 document.addEventListener('click', (e) => {
+  if (performance.now() < suppressClickUntil) { e.preventDefault(); e.stopPropagation(); return; }
+  if (e.target.matches('input[data-field="day"]')) { try { e.target.showPicker(); } catch {} return; }
   const el = e.target.closest('[data-act]');
-  if (el && ACTIONS[el.dataset.act]) ACTIONS[el.dataset.act](el, e);
+  if (!el || el.disabled) return;
+  const act = el.dataset.act;
+  const fn = (sheet && sheet.el.contains(el) && sheet.actions[act]) || ACTIONS[act];
+  if (fn) fn(el, e);
 });
 
 document.addEventListener('input', (e) => {
-  if (e.target.id === 'ob-name') U.ob.name = e.target.value;
+  const t = e.target;
+  if (t.id === 'ob-name') U.ob.name = t.value;
+  else if (sheet && sheet.onField && sheet.el.contains(t)) sheet.onField(t, 'input');
 });
 
 document.addEventListener('change', (e) => {
-  const tag = e.target.dataset.since;
-  if (!tag) return;
-  const max = todayKey();
-  const v = e.target.value;
-  // A cleared date falls back to today; a future date clamps to today.
-  U.ob.picks[tag] = !v || v > max ? max : v;
-  e.target.value = U.ob.picks[tag];
+  const t = e.target;
+  if (t.dataset.since) {
+    const max = todayKey();
+    // A cleared date falls back to today; a future date clamps to today.
+    U.ob.picks[t.dataset.since] = !t.value || t.value > max ? max : t.value;
+    t.value = U.ob.picks[t.dataset.since];
+  } else if (t.dataset.field === 'day' && !sheet) {
+    jumpToDay(t.value);
+  } else if (sheet && sheet.onField && sheet.el.contains(t)) {
+    sheet.onField(t, 'change');
+  }
 });
 
 document.addEventListener('keydown', (e) => {
@@ -804,6 +1851,9 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     e.target.blur();
     ACTIONS['ob-next']();
+  } else if (e.key === 'Enter' && e.target.matches('.sheet input')) {
+    e.preventDefault();
+    e.target.blur();   // "done" on the keyboard just puts it away
   } else if (e.key === 'Escape') {
     if (dialog) dialog.finish(false);
     else if (sheet) requestCloseSheet();
@@ -820,6 +1870,8 @@ document.addEventListener('visibilitychange', () => {
 // ---- boot ------------------------------------------------------------------------------------
 function boot() {
   document.title = APP_NAME;
+  fitShell();
+  addEventListener('resize', fitShell);
   initServiceWorker();
   let raw;
   try {
