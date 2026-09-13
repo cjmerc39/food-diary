@@ -1,2 +1,4 @@
 node_modules/
 shots*/
+# The build spec describes the family's situation; it stays local.
+FOOD-DIARY-SPEC.md

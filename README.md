@@ -18,6 +18,20 @@ own files so it works offline; the diary itself lives only in localStorage.
 Export a JSON backup from More now and then, because deleting the Home Screen
 app deletes its data.
 
+## Using it
+
+- **Today:** `+ food` and `+ symptom` on every tab; tap an entry to edit or
+  delete it; arrows, the date, or a swipe change the day.
+- **Trends:** daily symptom load with phase bands, per-category strips, and
+  the suspects list (correlation, not diagnosis).
+- **Phases:** eliminations and reintroductions; they drive the exposure
+  banners on Today and the 72-hour watch card.
+- **More > Report:** a print-styled summary for the pediatrician. Print, or
+  save a PDF from the print preview.
+- **More > Back up now:** saves the whole diary as a JSON file (the share sheet
+  on iPhone). **Restore** merges a backup in by id, or replaces the diary after
+  a confirm; both can be undone right after.
+
 ## Files
 
 | File | What it is |

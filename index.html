@@ -23,6 +23,9 @@
   --food:#b0553a; --food-on:#fff8f1; --food-soft:#f3e0d5; --food-ink:#8a3f28;
   --sym:#34766f; --sym-on:#f3faf9; --sym-soft:#d9e9e6; --sym-ink:#285c57;
   --danger:#a33b2c; --danger-on:#fff6f2; --danger-soft:#f6dcd6; --primary:#2e2924; --primary-on:#f6f1e8;
+  /* phase bands: the validated categorical palette, slots follow each food */
+  --band-0:#2a78d6; --band-1:#eb6834; --band-2:#1baf7a; --band-3:#eda100;
+  --band-4:#e87ba4; --band-5:#008300; --band-6:#4a3aa7; --band-7:#e34948;
   --scrim:rgba(46,41,36,.4); --shadow:0 -8px 32px rgba(70,50,30,.14);
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --round:ui-rounded,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
@@ -35,6 +38,8 @@
     --food:#bd7659; --food-on:#1a110d; --food-soft:#2f211b; --food-ink:#dca088;
     --sym:#579891; --sym-on:#0b1514; --sym-soft:#172826; --sym-ink:#8bc0ba;
     --danger:#cf6e5c; --danger-on:#1a0f0c; --danger-soft:#2e1916; --primary:#c8beb1; --primary-on:#14120f;
+    --band-0:#3987e5; --band-1:#d95926; --band-2:#199e70; --band-3:#c98500;
+    --band-4:#d55181; --band-5:#008300; --band-6:#9085e9; --band-7:#e66767;
     --scrim:rgba(0,0,0,.62); --shadow:0 -8px 32px rgba(0,0,0,.6);
   }
 }
@@ -239,6 +244,7 @@ svg{display:block;flex:none}
 .sect{display:block;margin-top:20px}
 .sect-label{display:block;margin-bottom:8px;color:var(--ink2);font-size:15px;font-weight:600}
 .hint{margin-top:10px;color:var(--ink2);font-size:15px}
+.hint:empty{display:none}
 .lede{margin-bottom:4px;color:var(--ink2);font-size:15px}
 .search{position:relative;display:block}
 .search svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);width:22px;height:22px;color:var(--ink2);pointer-events:none}
@@ -289,6 +295,100 @@ svg{display:block;flex:none}
 .foot-hint{color:var(--ink2);font-size:15px;text-align:center}
 .foot-hint:empty{display:none}
 
+/* ---- trends ------------------------------------------------------------------------
+   One series (daily load) in ink with a light wash; phases behind it as washes
+   in fixed palette slots; hairline grid; text always in text colors. */
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 12px}
+.filters .chip,.winpick .chip{min-height:44px;padding:0 16px;font-size:16px}
+.filters .chip[aria-pressed="true"],.winpick .chip[aria-pressed="true"]{background:var(--primary);border-color:var(--primary);color:var(--primary-on)}
+.chart-card{position:relative;margin-bottom:12px;padding:16px 14px 14px}
+.chart-title{font:600 19px/1.3 var(--round)}
+.chart-card > .fine,.suspects > .fine{margin:2px 0 10px}
+.chart{display:block;width:100%;height:auto;touch-action:pan-y;-webkit-user-select:none;user-select:none}
+.chart:focus-visible{outline-offset:4px}
+.chart text{font-family:var(--sans);font-size:11px;fill:var(--ink2)}
+.chart .tick{font-variant-numeric:tabular-nums}
+.chart .grid{stroke:var(--line);stroke-width:1}
+.chart .line{fill:none;stroke:var(--ink);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.chart .area{fill:var(--ink);opacity:.07}
+.chart .dot{fill:var(--ink);stroke:var(--card);stroke-width:2}
+.chart .value{fill:var(--ink);font-weight:600}
+.chart .band-label{font-size:10px;fill:var(--ink2)}
+.chart .cross{stroke:var(--ink2);stroke-width:1}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;color:var(--ink2);font-size:14px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.swatch{display:inline-block;width:16px;height:10px;border-radius:3px;background:var(--sw)}
+.swatch.hatch{background:repeating-linear-gradient(45deg,var(--sw) 0 2px,transparent 2px 5px);box-shadow:inset 0 0 0 1.5px var(--sw)}
+.tip{position:absolute;z-index:2;top:0;left:0;min-width:128px;max-width:230px;padding:8px 12px;border-radius:12px;
+  background:var(--primary);color:var(--primary-on);font-size:14px;line-height:1.35;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,.18)}
+.tip span{display:block}
+.tip .tip-value{font-size:18px;font-weight:700}
+.strip-row + .strip-row{margin-top:8px}
+.strip-label{display:block;color:var(--ink2);font-size:13px}
+.strip{display:block;width:100%;height:auto}
+.strip .grid{stroke:var(--line);stroke-width:1}
+.strip .bar{fill:var(--sym)}
+.suspects{margin-bottom:12px}
+.winpick{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin:10px 0 4px}
+.winpick .chip{padding:0}
+.suspect{padding:12px 0;border-top:1px solid var(--line)}
+.winpick + .suspect,.winpick + .hint{margin-top:10px}
+.suspect-top{display:flex;align-items:baseline;gap:10px}
+.suspect-name{flex:1;font:600 19px/1.3 var(--round)}
+.suspect-ratio{font:700 22px/1 var(--round)}
+.suspect-line{margin-top:4px;color:var(--ink2);font-size:15px}
+.caveat{margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--sunk);color:var(--ink);font-weight:600;font-size:15px}
+.more-card{margin-bottom:12px}
+details.more-card > summary{min-height:44px;display:flex;align-items:center;font-weight:600;cursor:pointer;list-style:none}
+details.more-card > summary::-webkit-details-marker{display:none}
+details.more-card > summary::after{content:"";margin-left:auto;width:9px;height:9px;border-right:2px solid var(--ink2);border-bottom:2px solid var(--ink2);transform:translateY(-3px) rotate(45deg)}
+details[open].more-card > summary::after{transform:translateY(2px) rotate(-135deg)}
+.plain.days{margin-top:6px;font-size:15px}
+.footnote{margin:14px 4px 4px;color:var(--ink2);font-size:13px}
+
+/* ---- more: rows, settings, backups ---------------------------------------------- */
+.section-label{margin:20px 4px 8px;color:var(--ink2);font-size:13px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.rows{padding:0 16px}
+.row{display:flex;align-items:center;gap:12px;width:100%;min-height:58px;padding:8px 0;border-bottom:1px solid var(--line);text-align:left;font-size:17px;color:var(--ink)}
+.rows > :last-child{border-bottom:0}
+.row > svg{width:20px;height:20px;color:var(--ink3)}
+.row-main{flex:1;min-width:0;display:block}
+.row-sub{display:block;color:var(--ink2);font-size:14px}
+.row.danger{color:var(--danger);font-weight:600}
+.row.danger .row-sub{font-weight:400}
+.row-block{display:block;padding:12px 0}
+.tagrow{display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line)}
+.tagrow .switchrow{flex:1;margin:0}
+.tagrow .fine{font-weight:400}
+.iconbtn{flex:none;width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--sunk);color:var(--danger)}
+.iconbtn svg{width:20px;height:20px}
+.iconbtn-space{flex:none;width:44px}
+.addtag{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}
+.addtag .btn{min-height:56px}
+.inset{margin-top:10px;background:var(--sunk);border-color:transparent}
+.inset p{margin-top:2px}
+
+/* ---- report (screen and print) -------------------------------------------------- */
+.report-bar{flex:none;display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;border-bottom:1px solid var(--line)}
+.report-bar-title{flex:1;font:700 22px/1.2 var(--round)}
+.report-print{min-height:48px;padding:0 16px;font-size:16px}
+.report-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:14px 16px calc(28px + env(safe-area-inset-bottom))}
+.report-controls{margin-bottom:14px}
+.report-dates{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.report-dates span{display:block;margin-bottom:4px;color:var(--ink2);font-size:14px}
+.report{padding:20px 16px;border:1px solid var(--line);border-radius:20px;background:var(--card);color:var(--ink)}
+.report h1{font:700 24px/1.2 var(--round)}
+.report h2{margin:26px 0 4px;font:600 18px/1.3 var(--round)}
+.report-meta{margin-top:4px;color:var(--ink2);font-size:14px}
+.report .chart{margin-top:10px}
+.table-wrap{margin-top:8px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.report table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.35}
+.report th{padding:6px 12px 6px 0;border-bottom:1px solid var(--ink3);color:var(--ink2);font-weight:600;text-align:left;white-space:nowrap}
+.report td{padding:6px 12px 6px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.report .nowrap{white-space:nowrap}
+.report-foot{margin-top:28px;padding-top:12px;border-top:1px solid var(--line);color:var(--ink2);font-size:14px}
+.print-hint{margin-top:8px;text-align:center}
+
 /* ---- overlays: sheets, dialogs, toast ----------------------------------------- */
 #layer{position:absolute;inset:0;z-index:20;pointer-events:none}
 #layer > *{pointer-events:auto}
@@ -332,6 +432,27 @@ body[data-screen="onboard"] #toast,body[data-screen="blocked"] #toast{bottom:cal
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important}
 }
+
+/* The printed handout: always the light palette, only the report, full length. */
+@media print{
+  :root{
+    --bg:#ffffff; --card:#ffffff; --sunk:#f2ede4; --line:#ddd3c7; --ink:#1f1b17; --ink2:#564e45; --ink3:#8a8075;
+    --sym:#34766f; --danger:#a33b2c;
+    --band-0:#2a78d6; --band-1:#eb6834; --band-2:#1baf7a; --band-3:#eda100;
+    --band-4:#e87ba4; --band-5:#008300; --band-6:#4a3aa7; --band-7:#e34948;
+  }
+  @page{margin:14mm}
+  body[data-screen="report"]{height:auto!important;overflow:visible!important;display:block!important;background:#fff!important}
+  body[data-screen="report"] > :not(#report){display:none!important}
+  body[data-screen="report"] #report{display:block!important;max-width:none}
+  body[data-screen="report"] .noprint{display:none!important}
+  body[data-screen="report"] .report-scroll{overflow:visible;padding:0}
+  body[data-screen="report"] .report{padding:0;border:0;border-radius:0}
+  body[data-screen="report"] .table-wrap{overflow:visible}
+  body[data-screen="report"] thead{display:table-header-group}
+  body[data-screen="report"] tr,body[data-screen="report"] .keep{break-inside:avoid}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
 </style>
 </head>
 <body>
@@ -350,6 +471,8 @@ body[data-screen="onboard"] #toast,body[data-screen="blocked"] #toast{bottom:cal
 </div>
 <div id="onboard" class="screen" hidden></div>
 <div id="blocked" class="screen" hidden></div>
+<div id="report" class="screen" hidden></div>
+<input type="file" id="import-file" class="sr" accept=".json,application/json" tabindex="-1" aria-hidden="true">
 <div id="layer"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 
@@ -360,7 +483,9 @@ import {
   allTags, tagLabel, tagState, cycleTag, sortPhases, isPhaseActive, phaseDay, phasesToClose,
   rankMeals, searchMeals, findMealByName, autoMealName,
   symptomMissing, symptomFields, dayEntries, exposureBanners, pruneDismissed, reintroWatches,
-  standaloneHeight,
+  standaloneHeight, LOAD_CATS, WINDOW_CHOICES, TREND_RANGES, daysBetween, slugify,
+  trendDays, trendSeries, phaseBands, phaseTagSlots, suspects, rangeEntries,
+  addCustomTag, tagInUse, mergeStates,
 } from './logic.js';
 
 // ---- identity ------------------------------------------------------------------
@@ -369,11 +494,12 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 2;
+const BUILD = 3;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
-const STORE_KEY = 'food-diary:state';
+const STORE_PREFIX = 'food-diary:';
+const STORE_KEY = `${STORE_PREFIX}state`;
 
 // ---- state -----------------------------------------------------------------------
 let S = null;          // the one saved state object; call save() after every mutation
@@ -382,6 +508,8 @@ const U = {            // UI-only, never saved
   tab: 'today',
   day: null,           // day key being viewed on Today; null means today
   fit: null,           // last installed-app height measurement, shown in More
+  trendRange: '4w',    // Trends date range
+  report: null,        // { preset, from, to } while the report is open
   ob: { step: 0, name: '', picks: {}, lockUntil: 0 },   // onboarding: picks = { tagId: 'YYYY-MM-DD' }
 };
 
@@ -500,6 +628,7 @@ const ICON = {
   skin: svg(`<path d="M6 7c2.8-3 9.2-3 12 0s3 7.5-.5 10.5-8.5 2.5-11.5 0S3.2 10 6 7z"/><circle cx="9.5" cy="10.5" r="1.1" ${DOT}/><circle cx="14.2" cy="9.6" r="1.1" ${DOT}/><circle cx="12.6" cy="14.2" r="1.1" ${DOT}/>`),
   resp: svg('<path d="M3.5 9h10.5a3 3 0 1 0-3-3"/><path d="M3.5 13h14.5a3 3 0 1 1-3 3"/><path d="M3.5 17h5"/>'),
   other: svg('<rect x="5" y="3.5" width="14" height="17" rx="3"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4"/>'),
+  trash: svg('<path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/>'),
 };
 
 // ---- screens -----------------------------------------------------------------------
@@ -508,6 +637,7 @@ function showScreen(name) {
   $('#app').hidden = name !== 'app';
   $('#onboard').hidden = name !== 'onboard';
   $('#blocked').hidden = name !== 'blocked';
+  $('#report').hidden = name !== 'report';
 }
 
 function showBlocked(reason) {
@@ -841,11 +971,314 @@ function watchHtml(w) {
   </section>`;
 }
 
-// ---- trends and phases ------------------------------------------------------------------
-function viewTrends() {
-  return empty('trends', 'Trends are resting', 'Log a few days of meals and symptoms and the trends will wake up.') +
-    '<p class="soon">Coming in build step 5: the symptom load chart, category strips, and the suspects list.</p>';
+// ---- trends ------------------------------------------------------------------------------
+const RANGE_LABELS = { '2w': '2w', '4w': '4w', '8w': '8w', all: 'All' };
+const RANGE_NAMES = { '2w': '2 weeks', '4w': '4 weeks', '8w': '8 weeks', all: 'Everything logged' };
+
+function rangeChipsHtml(act, current) {
+  return `<div class="filters" role="group" aria-label="Date range">${Object.keys(TREND_RANGES).map((r) =>
+    `<button class="chip" data-act="${act}" data-range="${r}" aria-pressed="${current === r}" aria-label="${RANGE_NAMES[r]}">${RANGE_LABELS[r]}</button>`).join('')}</div>`;
 }
+
+function viewTrends() {
+  charts.clear();
+  if (!S.foodLog.length && !S.symptomLog.length) {
+    return empty('trends', 'Trends are resting', 'Log a few days of meals and symptoms and the trends will wake up.');
+  }
+  const { fromDay, toDay } = trendDays(S, U.trendRange, todayKey());
+  const series = trendSeries(S, fromDay, toDay);
+  const bands = phaseBands(S.phases, fromDay, toDay);
+  const loggedDays = series.filter((d) => d.hasData).length;
+  return `
+    ${rangeChipsHtml('trend-range', U.trendRange)}
+    <section class="card chart-card">
+      <h2 class="chart-title">Symptom load</h2>
+      <p class="fine">Each day's total, from 0 to 20. Shaded bands are phases. Tap the chart for a day's details.</p>
+      ${loadChartHtml(series, bands, { interactive: true })}
+      ${bandLegendHtml(bands)}
+      ${loggedDays < 4 ? '<p class="hint">A few more days of logging will make the shape easier to read.</p>' : ''}
+    </section>
+    <section class="card chart-card">
+      <h2 class="chart-title">By category</h2>
+      <p class="fine">The worst severity logged each day, from 0 to 3.</p>
+      ${categoryStripHtml(series)}
+    </section>
+    ${suspectsCardHtml(fromDay)}
+    <details class="card more-card"><summary>Daily numbers</summary>${dailyListHtml(series)}</details>
+    <p class="footnote">The categories follow the ones clinicians look at for cow's milk protein symptoms. The load score is this app's own summary, not a clinical score.</p>`;
+}
+
+function dailyListHtml(series) {
+  const rows = series.filter((d) => d.hasData).reverse().map((d) => {
+    const cats = LOAD_CATS.filter((c) => d.cats[c]).map((c) => `${CATS[c].label.toLowerCase()} ${d.cats[c]}`);
+    const flags = Object.keys(d.flags).filter((f) => d.flags[f]).map((f) => FLAG_LABELS[f].toLowerCase());
+    return `<li><b>${esc(dayShort(d.day))}</b>: load ${d.load}${cats.length ? `, ${cats.join(', ')}` : ''}${flags.length ? ` (${flags.join(', ')})` : ''}</li>`;
+  }).join('');
+  return rows ? `<ul class="plain days">${rows}</ul>` : '<p class="hint">No days logged in this range yet.</p>';
+}
+
+// ---- suspects ------------------------------------------------------------------------------
+const suspectData = (fromDay, toTs) =>
+  suspects(S, { from: `${fromDay}T00:00`, to: toTs, windowHours: S.settings.windowHours, now: nowTs() });
+const fmtRatio = (x) => `${x >= 10 ? Math.round(x) : x.toFixed(1)}x`;
+const exposureText = (row) => `${plural(row.exposures, 'exposure')}${row.possible ? ` (${row.possible} possible)` : ''}`;
+
+function suspectFacts(row, hours) {
+  return [
+    exposureText(row),
+    `symptoms followed within ${hours}h after ${row.followed} of ${row.complete}`,
+    row.ratio == null ? 'no symptoms logged in this range' : `load after exposure ${fmtRatio(row.ratio)} baseline`,
+  ];
+}
+
+const windowChipsHtml = (hours) => `<div class="winpick" role="group" aria-label="Hours after eating">${WINDOW_CHOICES.map((h) =>
+  `<button class="chip" data-act="window" data-hours="${h}" aria-pressed="${hours === h}">${h}h</button>`).join('')}</div>`;
+
+function suspectsCardHtml(fromDay) {
+  const hours = S.settings.windowHours;
+  const r = suspectData(fromDay, nowTs());
+  const ranked = r.ranked.map((row) => `
+    <div class="suspect">
+      <div class="suspect-top"><span class="suspect-name">${esc(tagLabel(S.settings, row.tag))}</span>${row.ratio == null ? '' : `<span class="suspect-ratio">${fmtRatio(row.ratio)}</span>`}</div>
+      <p class="suspect-line">${esc(suspectFacts(row, hours).join(' · '))}</p>
+      ${row.watching ? `<p class="fine">${plural(row.watching, 'more exposure is', 'more exposures are')} still inside the ${hours}h window.</p>` : ''}
+    </div>`).join('');
+  const few = r.notEnough.map((row) =>
+    `<li>${esc(tagLabel(S.settings, row.tag))}: ${esc(exposureText(row))}${row.watching ? `, ${row.watching} still inside the window` : ''}</li>`).join('');
+  return `<section class="card suspects">
+    <h2 class="chart-title">Suspects</h2>
+    <p class="fine">For each food, the symptom points in the hours after eating it, compared with a usual stretch of the same length in this range. Possibly hidden exposures count half.</p>
+    ${windowChipsHtml(hours)}
+    ${ranked || `<p class="hint">No food has two exposures with a finished ${hours}h window in this range yet.</p>`}
+    ${few ? `<details class="more-card"><summary>Not enough data yet (${r.notEnough.length})</summary><ul class="plain">${few}</ul></details>` : ''}
+    <p class="caveat">Correlation, not diagnosis. Coincidence puts innocent foods here.</p>
+  </section>`;
+}
+
+// ---- charts ------------------------------------------------------------------------------
+// Inline SVG in a 340-unit-wide viewBox that scales to its card. The load
+// chart and the category strips share one x geometry, so their days line up.
+const CHART_W = 340;
+const PAD_L = 24;
+const PAD_R = 12;
+const charts = new Map();   // interactive chart id -> its series, for the day readout
+let chartSeq = 0;
+
+const slotWidth = (n) => (CHART_W - PAD_L - PAD_R) / n;
+const slotMid = (n, i) => PAD_L + (i + 0.5) * slotWidth(n);
+const round1 = (v) => Math.round(v * 10) / 10;
+const dayShort = (day) => parseLocal(`${day}T00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+
+// A food keeps its band color wherever it shows up (see phaseTagSlots).
+function bandColor(tag) {
+  const slot = phaseTagSlots(S.phases).get(tag);
+  return slot == null || slot < 0 ? 'var(--ink3)' : `var(--band-${slot})`;
+}
+
+function loadChartHtml(series, bands, { interactive = false } = {}) {
+  const id = `chart${++chartSeq}`;
+  const n = series.length;
+  // Each food in range gets its own horizontal track behind the line, so
+  // overlapping phases (dairy and soy out at once) stay distinct instead of
+  // blending. Labels sit in one row per track above the plot, clear of the data.
+  const slots = phaseTagSlots(S.phases);
+  const slotRank = (tag) => (slots.has(tag) && slots.get(tag) >= 0 ? slots.get(tag) : 99);
+  const tracks = [...new Set(bands.map((b) => b.tag))].sort((a, b) => slotRank(a) - slotRank(b));
+  const rowH = 13;
+  const top = 6 + tracks.length * rowH + (tracks.length ? 4 : 0);
+  const plotH = 128, bottom = top + plotH, H = bottom + 22;
+  const trackH = plotH / Math.max(1, tracks.length);
+  const logged = series.map((d, i) => [d, i]).filter(([d]) => d.hasData);
+  const peakLoad = Math.max(0, ...logged.map(([d]) => d.load));
+  const yMax = Math.min(20, Math.max(5, Math.ceil(peakLoad / 5) * 5));
+  const y = (v) => bottom - (v / yMax) * plotH;
+  const at = new Map(series.map((d, i) => [d.day, i]));
+
+  const patterns = new Set();
+  const labelEnds = new Map();
+  const bandSvg = [...bands].sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0)).map((b) => {
+    const t = tracks.indexOf(b.tag);
+    const x0 = PAD_L + at.get(b.from) * slotWidth(n);
+    const x1 = PAD_L + (at.get(b.to) + 1) * slotWidth(n);
+    const ty = top + t * trackH;
+    const color = bandColor(b.tag);
+    const back = b.kind === 'reintroduce';
+    const pid = `${id}-${b.tag}`;
+    if (back) {
+      patterns.add(`<pattern id="${pid}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">`
+        + `<rect width="6" height="6" style="fill:${color};opacity:.08"/><rect width="2" height="6" style="fill:${color};opacity:.45"/></pattern>`);
+    }
+    let svg = `<rect x="${round1(x0)}" y="${round1(ty)}" width="${round1(x1 - x0)}" height="${round1(trackH)}" style="${back ? `fill:url(#${pid})` : `fill:${color};opacity:.16`}"/>`;
+    if (!b.clippedStart) svg += `<rect x="${round1(x0)}" y="${round1(ty)}" width="1.5" height="${round1(trackH)}" style="fill:${color}"/>`;
+    // Label at the band's start in its track's row, skipped if it would run
+    // into the label before it (the legend always names every band).
+    const text = `${tagLabel(S.settings, b.tag)} ${back ? 'back' : 'out'}`;
+    const width = 9 + text.length * 5.6;
+    const left = Math.min(x0, CHART_W - 2 - width);
+    if (left >= (labelEnds.has(t) ? labelEnds.get(t) + 6 : -Infinity)) {
+      labelEnds.set(t, left + width);
+      const ly = 6 + t * rowH;
+      svg += `<rect x="${round1(left)}" y="${ly + 3}" width="6" height="6" rx="1.5" style="fill:${color}"/>`
+        + `<text class="band-label" x="${round1(left + 9)}" y="${ly + 9}">${esc(text)}</text>`;
+    }
+    return svg;
+  }).join('');
+
+  const grid = [0, yMax / 2, yMax].map((v) =>
+    `<line class="grid" x1="${PAD_L}" x2="${CHART_W - PAD_R}" y1="${round1(y(v))}" y2="${round1(y(v))}"/>`
+    + (Number.isInteger(v) ? `<text class="tick" x="${PAD_L - 6}" y="${round1(y(v) + 4)}" text-anchor="end">${v}</text>` : '')).join('');
+
+  // Days before the diary began break the line instead of dropping it to zero.
+  let line = '', area = '', run = [];
+  const flush = () => {
+    if (run.length) {
+      const pts = run.map(([x, v]) => `${round1(x)},${round1(v)}`).join('L');
+      line += `M${pts}`;
+      area += `M${round1(run[0][0])},${bottom}L${pts}L${round1(run[run.length - 1][0])},${bottom}Z`;
+    }
+    run = [];
+  };
+  series.forEach((d, i) => { if (d.hasData) run.push([slotMid(n, i), y(d.load)]); else flush(); });
+  flush();
+
+  // Direct labels only where the story is: the latest day and the peak.
+  let marks = '';
+  if (logged.length) {
+    const [last, li] = logged[logged.length - 1];
+    const [peak, pi] = logged.reduce((m, c) => (c[0].load > m[0].load ? c : m));
+    // Above the point, or beside it when a spike reaches the top of the plot.
+    const valueLabel = (x, v) => {
+      const nearRight = x > CHART_W - PAD_R - 16;
+      if (y(v) - 9 >= top + 10) {
+        return `<text class="value" x="${round1(x)}" y="${round1(y(v) - 9)}" text-anchor="${nearRight ? 'end' : x < PAD_L + 16 ? 'start' : 'middle'}">${v}</text>`;
+      }
+      return `<text class="value" x="${round1(nearRight ? x - 7 : x + 7)}" y="${round1(y(v) + 10)}" text-anchor="${nearRight ? 'end' : 'start'}">${v}</text>`;
+    };
+    marks += `<circle class="dot" cx="${round1(slotMid(n, li))}" cy="${round1(y(last.load))}" r="4"/>${valueLabel(slotMid(n, li), last.load)}`;
+    if (pi !== li && peak.load > 0) marks += valueLabel(slotMid(n, pi), peak.load);
+  }
+
+  const ticks = n < 2 ? [0] : n < 8 ? [0, n - 1] : [0, Math.round((n - 1) / 2), n - 1];
+  const xLabels = ticks.map((i, k) => {
+    const first = k === 0, last = !first && k === ticks.length - 1;
+    return `<text x="${round1(first ? PAD_L : last ? CHART_W - PAD_R : slotMid(n, i))}" y="${H - 5}" text-anchor="${first ? 'start' : last ? 'end' : 'middle'}">${esc(dayShort(series[i].day))}</text>`;
+  }).join('');
+
+  if (interactive) charts.set(id, series);
+  const label = `Daily symptom load, ${dayShort(series[0].day)} to ${dayShort(series[n - 1].day)}`;
+  return `<svg class="chart" id="${id}" viewBox="0 0 ${CHART_W} ${H}" role="img" aria-label="${esc(label)}"${interactive ? ' data-chart tabindex="0"' : ''}>`
+    + `<defs>${[...patterns].join('')}</defs>${bandSvg}${grid}<path class="area" d="${area}"/><path class="line" d="${line}"/>${marks}${xLabels}`
+    + (interactive ? `<line class="cross" x1="0" x2="0" y1="${top}" y2="${bottom}" visibility="hidden"/>` : '')
+    + `</svg>${interactive ? '<div class="tip" hidden></div>' : ''}`;
+}
+
+function bandLegendHtml(bands) {
+  const seen = new Map();
+  for (const b of bands) if (!seen.has(`${b.tag}:${b.kind}`)) seen.set(`${b.tag}:${b.kind}`, b);
+  if (!seen.size) return '<p class="fine">No phases in this range.</p>';
+  return `<div class="legend">${[...seen.values()].map((b) =>
+    `<span><i class="swatch${b.kind === 'reintroduce' ? ' hatch' : ''}" style="--sw:${bandColor(b.tag)}"></i>${esc(tagLabel(S.settings, b.tag))} ${b.kind === 'reintroduce' ? 'reintroduced' : 'eliminated'}</span>`).join('')}</div>`;
+}
+
+// Small multiples: one row per category, on the same days as the load chart.
+function categoryStripHtml(series) {
+  const n = series.length, H = 24, base = H - 1;
+  const w = Math.max(1, Math.min(24, slotWidth(n) - 2));   // 2 units of card between neighbors
+  const bar = (x, top, h) => {
+    const r = Math.min(4, w / 2, h);
+    return `M${round1(x)},${base}V${round1(top + r)}Q${round1(x)},${round1(top)} ${round1(x + r)},${round1(top)}`
+      + `H${round1(x + w - r)}Q${round1(x + w)},${round1(top)} ${round1(x + w)},${round1(top + r)}V${base}Z`;
+  };
+  return LOAD_CATS.map((c) => {
+    const bars = series.map((d, i) => {
+      const v = d.hasData ? d.cats[c] : 0;
+      if (!v) return '';
+      const h = (v / 3) * (H - 3);
+      return `<path class="bar" d="${bar(slotMid(n, i) - w / 2, base - h, h)}"/>`;
+    }).join('');
+    return `<div class="strip-row"><span class="strip-label">${CATS[c].label}</span>
+      <svg class="strip" viewBox="0 0 ${CHART_W} ${H}" aria-hidden="true"><line class="grid" x1="${PAD_L}" x2="${CHART_W - PAD_R}" y1="${base + 0.5}" y2="${base + 0.5}"/>${bars}</svg></div>`;
+  }).join('');
+}
+
+// Day readout: tap or drag across the chart, hover with a mouse, or focus it
+// and use the arrow keys. Everything it shows is also in "Daily numbers".
+function chartTip(svg, index) {
+  const series = charts.get(svg.id);
+  if (!series) return;
+  const n = series.length;
+  const i = Math.max(0, Math.min(n - 1, index));
+  svg.dataset.sel = i;
+  const x = round1(slotMid(n, i));
+  const cross = svg.querySelector('.cross');
+  cross.setAttribute('x1', x);
+  cross.setAttribute('x2', x);
+  cross.setAttribute('visibility', 'visible');
+  const d = series[i];
+  const tip = svg.nextElementSibling;
+  tip.replaceChildren();
+  const add = (text, cls = '') => {
+    const s = document.createElement('span');
+    s.textContent = text;
+    if (cls) s.className = cls;
+    tip.append(s);
+  };
+  add(dayShort(d.day));
+  if (!d.hasData) {
+    add('Before the diary began', 'tip-value');
+  } else {
+    add(`Load ${d.load}`, 'tip-value');
+    const cats = LOAD_CATS.filter((c) => d.cats[c]).map((c) => `${CATS[c].label} ${d.cats[c]}`);
+    const flags = Object.keys(d.flags).filter((f) => d.flags[f]).map((f) => FLAG_LABELS[f]);
+    if (cats.length) add(cats.join(', '));
+    if (flags.length) add(flags.join(', '));
+    if (!cats.length && !flags.length) add('No symptoms logged');
+  }
+  tip.hidden = false;
+  const card = svg.parentElement.getBoundingClientRect();
+  const box = svg.getBoundingClientRect();
+  const px = box.left - card.left + (x / CHART_W) * box.width;
+  tip.style.left = `${Math.max(6, Math.min(card.width - tip.offsetWidth - 6, px - tip.offsetWidth / 2))}px`;
+  tip.style.top = `${Math.max(6, box.top - card.top - tip.offsetHeight - 4)}px`;
+}
+
+function hideChartTips(keep = null) {
+  for (const svg of document.querySelectorAll('svg[data-chart]')) {
+    if (svg === keep) continue;
+    svg.querySelector('.cross').setAttribute('visibility', 'hidden');
+    svg.nextElementSibling.hidden = true;
+    delete svg.dataset.sel;
+  }
+}
+
+const chartIndexAt = (svg, clientX) => {
+  const box = svg.getBoundingClientRect();
+  return Math.floor((((clientX - box.left) / box.width) * CHART_W - PAD_L) / slotWidth(charts.get(svg.id).length));
+};
+const chartOf = (target) => (target && target.closest ? target.closest('svg[data-chart]') : null);
+
+document.addEventListener('pointerdown', (e) => {
+  const svg = chartOf(e.target);
+  hideChartTips(svg);
+  if (svg && charts.has(svg.id)) chartTip(svg, chartIndexAt(svg, e.clientX));
+});
+document.addEventListener('pointermove', (e) => {
+  const svg = chartOf(e.target);
+  if (svg && charts.has(svg.id) && (e.pointerType === 'mouse' || e.buttons)) chartTip(svg, chartIndexAt(svg, e.clientX));
+});
+document.addEventListener('pointerout', (e) => {
+  const svg = e.pointerType === 'mouse' && chartOf(e.target);
+  if (svg && !svg.contains(e.relatedTarget)) hideChartTips();
+});
+document.addEventListener('focusin', (e) => {
+  const svg = chartOf(e.target);
+  if (svg && svg === e.target && charts.has(svg.id) && svg.dataset.sel == null) chartTip(svg, charts.get(svg.id).length - 1);
+});
+document.addEventListener('focusout', (e) => {
+  if (chartOf(e.target) === e.target) hideChartTips();
+});
+
+// ---- phases ------------------------------------------------------------------------------
 
 function viewPhases() {
   const now = nowTs();
@@ -877,7 +1310,10 @@ function phaseCard(p, now) {
 }
 
 function viewMore() {
-  const soon = ['Report for your pediatrician', 'Export a backup', 'Import a backup', 'Settings', 'Clear all data'];
+  const tags = allTags(S.settings);
+  const hidden = tags.filter((t) => t.hidden).length;
+  const row = (act, label, sub = '') =>
+    `<button class="row" data-act="${act}"><span class="row-main">${esc(label)}${sub ? `<span class="row-sub">${esc(sub)}</span>` : ''}</span>${ICON.right}</button>`;
   return `
     <section class="card about">
       <div class="about-head">${ICON.lock}<h2>Private by design</h2></div>
@@ -885,8 +1321,365 @@ function viewMore() {
       <p class="fine">Build ${BUILD} · ${isStandalone() ? 'Home Screen app' : 'running in the browser'}${U.fit
         ? ` · screen ${U.fit.screen}, window ${U.fit.window}, top inset ${U.fit.insetTop}, using ${U.fit.h}` : ''}</p>
     </section>
-    <p class="soon">Coming in build step 6:</p>
-    <ul class="list card">${soon.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>`;
+    <h3 class="section-label">For the doctor</h3>
+    <div class="card rows">${row('open-report', 'Report for your pediatrician', 'Phases, the chart, suspects, and the full log, ready to print or save as a PDF')}</div>
+    <h3 class="section-label">Backups</h3>
+    <div class="card rows">
+      ${row('export', 'Back up now', backupStatus())}
+      ${row('import', 'Restore from a backup', 'Merge a backup file into this diary, or replace it')}
+    </div>
+    <h3 class="section-label">Settings</h3>
+    <div class="card rows">
+      ${row('edit-name', "Baby's name", S.babyName.trim() || 'Not set')}
+      ${row('edit-tags', 'Allergen tags', `${tags.length - hidden} shown${hidden ? `, ${hidden} hidden` : ''}`)}
+      <div class="row row-block">
+        <span class="row-main">Suspects window<span class="row-sub">How many hours after eating a food count as "followed by symptoms"</span></span>
+        ${windowChipsHtml(S.settings.windowHours)}
+      </div>
+    </div>
+    <h3 class="section-label">Danger zone</h3>
+    <div class="card rows"><button class="row danger" data-act="clear-all"><span class="row-main">Clear all data<span class="row-sub">Deletes this diary from this phone</span></span></button></div>`;
+}
+
+function backupStatus() {
+  if (!S.lastBackup) return 'Never backed up';
+  const days = daysBetween(dayKey(S.lastBackup), todayKey());
+  return days <= 0 ? 'Last backup: today' : days === 1 ? 'Last backup: yesterday' : `Last backup: ${days} days ago`;
+}
+
+// ---- report ------------------------------------------------------------------------------
+// The pediatrician handout: a page styled for print, so Print (or saving a PDF
+// from the print preview) makes a clean copy. The bar, range controls, and
+// buttons are screen-only.
+const fmtFull = (ts) => parseLocal(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+function showReport() {
+  const { fromDay, toDay } = trendDays(S, U.trendRange, todayKey());
+  U.report = { preset: U.trendRange, from: fromDay, to: toDay };
+  $('#report').innerHTML = `
+    <div class="report-bar noprint">
+      <button class="navbtn" data-act="report-close" aria-label="Back to More">${ICON.left}</button>
+      <h1 class="report-bar-title">Report</h1>
+      <button class="btn btn-primary report-print" data-act="report-print">Print or save PDF</button>
+    </div>
+    <div class="report-scroll"></div>`;
+  showScreen('report');
+  renderReport();
+}
+
+function renderReport() {
+  const scroll = $('#report .report-scroll');
+  const top = scroll.scrollTop;
+  scroll.innerHTML = `${reportControlsHtml()}${reportHtml()}
+    <button class="btn btn-primary addbtn noprint" data-act="report-print">Print or save PDF</button>
+    <p class="fine noprint print-hint">In the print preview, tap Share to save a PDF or send it.</p>`;
+  scroll.scrollTop = top;
+}
+
+function reportControlsHtml() {
+  const { preset, from, to } = U.report;
+  const today = todayKey();
+  return `<section class="card report-controls noprint">
+    <span class="sect-label">Date range</span>
+    ${rangeChipsHtml('report-range', preset)}
+    <div class="report-dates">
+      <label><span>From</span><input class="date wide" type="date" data-field="report-from" value="${from}" max="${today}"></label>
+      <label><span>To</span><input class="date wide" type="date" data-field="report-to" value="${to}" max="${today}"></label>
+    </div>
+  </section>`;
+}
+
+function entryDetail({ kind, e }) {
+  if (kind === 'food') return e.note ? `${e.name} (${e.note})` : e.name;
+  const sev = Number.isFinite(e.severity) ? e.severity : 0;
+  const bits = [symptomName(e), sev ? `severity ${sev}` : '', ...(e.flags || []).map((f) => (FLAG_LABELS[f] || f).toLowerCase())];
+  return bits.filter(Boolean).join(', ') + (e.note ? ` (${e.note})` : '');
+}
+
+function entryTags({ kind, e }) {
+  if (kind !== 'food') return '';
+  const tags = e.tags || [];
+  return [...tags.map((t) => tagLabel(S.settings, t)),
+    ...(e.uncertain || []).filter((t) => !tags.includes(t)).map((t) => `${tagLabel(S.settings, t)}?`)].join(', ');
+}
+
+function reportHtml() {
+  const { from, to } = U.report;
+  const now = nowTs();
+  const hours = S.settings.windowHours;
+  const name = S.babyName.trim();
+  const series = trendSeries(S, from, to);
+  const bands = phaseBands(S.phases, from, to);
+  const sus = suspectData(from, `${to}T23:59`);
+  const entries = rangeEntries(S, from, to);
+  const table = (head, rows, cls = '') => `<div class="table-wrap"><table${cls ? ` class="${cls}"` : ''}>`
+    + `<thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+
+  const phaseRows = [...S.phases].sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0)).map((p) => {
+    const day = phaseDay(p, now);
+    const length = day === 0 ? 'not started' : p.end && p.end <= now ? plural(day, 'day') : `${plural(day, 'day')} so far`;
+    return `<tr><td>${esc(tagLabel(S.settings, p.tag))}</td><td>${p.kind === 'reintroduce' ? 'Reintroduced' : 'Eliminated'}</td>`
+      + `<td class="nowrap">${esc(fmtFull(p.start))}</td><td class="nowrap">${p.end ? esc(fmtFull(p.end)) : 'ongoing'}</td>`
+      + `<td class="nowrap">${length}</td><td>${esc(p.note || '')}</td></tr>`;
+  }).join('');
+
+  const suspectRows = sus.ranked.map((row) => `<tr><td>${esc(tagLabel(S.settings, row.tag))}</td><td>${esc(exposureText(row))}</td>`
+    + `<td class="nowrap">${row.followed} of ${row.complete}</td><td>${row.ratio == null ? 'no symptoms in range' : `${fmtRatio(row.ratio)} baseline`}</td></tr>`).join('');
+  const few = sus.notEnough.map((row) => `${tagLabel(S.settings, row.tag)} (${exposureText(row)})`).join(', ');
+
+  const logRows = entries.map((r) => `<tr><td class="nowrap">${esc(fmtDate(r.e.ts, { weekday: true }))}</td><td class="nowrap">${esc(fmtTime(r.e.ts))}</td>`
+    + `<td>${r.kind === 'food' ? 'Food' : 'Symptom'}</td><td>${esc(entryDetail(r))}</td><td>${esc(entryTags(r))}</td></tr>`).join('');
+
+  return `<article class="report">
+    <header>
+      <h1>Food and symptom diary${name ? `: ${esc(name)}` : ''}</h1>
+      <p class="report-meta">${esc(fmtFull(`${from}T00:00`))} to ${esc(fmtFull(`${to}T00:00`))} · generated ${esc(fmtFull(now))}</p>
+      <p class="report-meta">For discussion with our pediatrician.</p>
+    </header>
+    <section>
+      <h2>Phases</h2>
+      ${phaseRows ? table(['Food', 'Change', 'Started', 'Ended', 'Length', 'Note'], phaseRows) : '<p class="report-meta">No phases recorded.</p>'}
+    </section>
+    <section class="keep">
+      <h2>Daily symptom load</h2>
+      <p class="report-meta">Each day's total, 0 to 20: the worst severity (0 to 3) in each of crying, spit-up, stool, skin, and breathing, plus 2 for blood, 1 for mucus, and 2 for hives. Shaded bands are phases.</p>
+      ${loadChartHtml(series, bands)}
+      ${bandLegendHtml(bands)}
+    </section>
+    <section class="keep">
+      <h2>Suspects</h2>
+      <p class="report-meta">Symptom points in the ${hours} hours after eating each food, compared with a usual ${hours}-hour stretch in this range. Possibly hidden exposures count half, and a food needs two exposures to be listed.</p>
+      ${suspectRows ? table(['Food', 'Exposures', `Followed within ${hours}h`, 'Load after exposure'], suspectRows) : `<p class="report-meta">No food had two exposures with a finished ${hours}-hour window in this range.</p>`}
+      ${few ? `<p class="report-meta">Not enough data yet: ${esc(few)}.</p>` : ''}
+      <p class="caveat">Correlation, not diagnosis. Coincidence puts innocent foods here.</p>
+    </section>
+    <section>
+      <h2>Log</h2>
+      <p class="report-meta">Oldest first. A ? after an allergen means it was possibly hidden.</p>
+      ${logRows ? table(['Date', 'Time', 'Kind', 'Detail', 'Allergens'], logRows, 'log') : '<p class="report-meta">No entries in this range.</p>'}
+    </section>
+    <footer class="report-foot">Kept by a parent for discussion with our pediatrician. Not a diagnostic record.</footer>
+  </article>`;
+}
+
+// ---- backups -----------------------------------------------------------------------------
+// localStorage is the only copy of the diary, so a JSON file is the lifeboat.
+// On iPhone the share sheet saves it to Files or sends it anywhere.
+async function exportBackup() {
+  const name = `${slugify(APP_NAME)}-backup-${todayKey()}.json`;
+  const file = new File([JSON.stringify(S, null, 2)], name, { type: 'application/json' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: `${APP_NAME} backup` });
+    } else {
+      const url = URL.createObjectURL(file);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    }
+  } catch (err) {
+    if (err && err.name === 'AbortError') return;   // the share sheet was closed
+    toast("Couldn't create the backup file. Please try again.", { ms: 6000 });
+    return;
+  }
+  S.lastBackup = nowTs();
+  save();
+  render();
+  toast(`Backup saved as ${name}.`);
+}
+
+async function importBackup(file) {
+  let text = '';
+  try {
+    text = await file.text();
+  } catch {
+    toast("Couldn't read that file.", { ms: 6000 });
+    return;
+  }
+  const res = readState(text);
+  if (!res.ok && res.reason === 'newer') {
+    toast('That backup is from a newer version of the app. Close the app completely and reopen it to update, then try again.', { ms: 9000 });
+    return;
+  }
+  if (!res.ok || res.fresh) {
+    toast(`That file isn't a ${APP_NAME} backup.`, { ms: 6000 });
+    return;
+  }
+  openImportSheet(res.state, file.name);
+}
+
+const diaryCounts = (s) => [plural(s.foodLog.length, 'food entry', 'food entries'), plural(s.symptomLog.length, 'symptom'),
+  plural(s.phases.length, 'phase'), plural(s.meals.length, 'saved meal')].join(', ');
+
+function openImportSheet(incoming, fileName) {
+  const merged = mergeStates(S, incoming);
+  const adding = Object.values(merged.added).reduce((a, b) => a + b, 0);
+  openSheet({
+    title: 'Restore from a backup',
+    body: `<p class="lede">${esc(fileName)}</p>
+      <div class="card inset"><span class="sect-label">In the backup</span><p>${esc(diaryCounts(incoming))}</p></div>
+      <div class="card inset"><span class="sect-label">On this phone now</span><p>${esc(diaryCounts(S))}</p></div>
+      <div class="sect opts">
+        <button class="opt" data-act="import-merge"><span class="opt-text">Merge<span class="opt-sub">${adding
+          ? `Adds the ${plural(adding, 'item')} this phone doesn't have yet.` : 'This phone already has everything in the backup.'} Nothing here is changed or removed.</span></span></button>
+        <button class="opt" data-act="import-replace"><span class="opt-text">Replace<span class="opt-warn">Swaps this whole diary for the backup. Anything on this phone that isn't in the backup is lost.</span></span></button>
+      </div>`,
+    foot: '<button class="btn" data-act="close-sheet">Cancel</button>',
+    actions: {
+      'import-merge': () => {
+        const previous = S;
+        S = merged.state;
+        save();
+        closeSheet();
+        render();
+        toast(adding ? `Merged: ${plural(adding, 'item')} added.` : 'Nothing new to add.', {
+          ms: 8000, actions: adding ? [{ label: 'Undo', fn: () => { S = previous; save(); render(); } }] : [],
+        });
+      },
+      'import-replace': async () => {
+        const ok = await confirmDialog({
+          title: 'Replace this diary?',
+          body: `This phone's ${diaryCounts(S)} will be swapped for the backup's ${diaryCounts(incoming)}.`,
+          ok: 'Replace', cancel: 'Keep this diary', danger: true,
+        });
+        if (!ok) return;
+        const previous = S;
+        S = incoming;
+        U.day = null;
+        save();
+        closeSheet();
+        if (S.onboarded) showApp();
+        else showOnboarding();
+        toast('Diary replaced from the backup.', {
+          ms: 9000, actions: [{ label: 'Undo', fn: () => { S = previous; save(); showApp(); } }],
+        });
+      },
+    },
+  });
+}
+
+// ---- settings ----------------------------------------------------------------------------
+function openNameSheet() {
+  const d = { name: S.babyName };
+  const start = d.name;
+  openSheet({
+    title: "Baby's name",
+    body: `<label class="sect"><span class="sect-label">Name or nickname</span>
+        <input class="input" type="text" data-field="name" maxlength="40" autocomplete="off" autocapitalize="words" enterkeyhint="done" value="${esc(d.name)}"></label>
+      <p class="hint">Used in the app's wording and on the report.</p>`,
+    foot: '<button class="btn btn-primary" data-act="name-save" data-primary>Save</button>',
+    isDirty: () => d.name !== start,
+    actions: {
+      'name-save': () => {
+        S.babyName = d.name.trim();
+        save();
+        closeSheet();
+        render();
+        toast('Name saved.');
+      },
+    },
+    onField: (t, type) => { if (t.dataset.field === 'name' && type === 'input') d.name = t.value; },
+  });
+}
+
+// Tags that appear anywhere in the diary can be hidden but never deleted.
+function openTagsSheet() {
+  const d = { label: '' };
+  const isStarter = (t) => STARTER_TAGS.some((s) => s.id === t.id);
+  // Your own tags get a trailing delete column (a spacer when a tag is in use),
+  // so the switches in each section line up.
+  const tagRow = (t, custom) => `<div class="tagrow">
+      <button class="switchrow" data-act="tag-shown" data-tag="${t.id}" role="switch" aria-checked="${!t.hidden}">
+        <span>${esc(t.label)}</span><span class="switch" aria-hidden="true"></span></button>
+      ${!custom ? '' : tagInUse(S, t.id)
+        ? '<span class="iconbtn-space" aria-hidden="true"></span>'
+        : `<button class="iconbtn" data-act="tag-delete" data-tag="${t.id}" aria-label="Delete ${esc(t.label)}">${ICON.trash}</button>`}
+    </div>`;
+  const listHtml = () => {
+    const tags = allTags(S.settings);
+    const yours = tags.filter((t) => !isStarter(t));
+    return (yours.length ? `<span class="sect-label">Yours</span>${yours.map((t) => tagRow(t, true)).join('')}<span class="sect sect-label">Starter tags</span>` : '')
+      + tags.filter(isStarter).map((t) => tagRow(t, false)).join('');
+  };
+  openSheet({
+    title: 'Allergen tags',
+    body: `<p class="lede">Switch a tag off to hide it from the pickers; past entries keep it. Tags you've used can be hidden, not deleted.</p>
+      <div class="sect addtag">
+        <label><span class="sect-label">Add your own</span>
+          <input class="input" type="text" data-field="newtag" maxlength="30" autocomplete="off" enterkeyhint="done" placeholder="For example, sesame"></label>
+        <button class="btn" data-act="tag-add">Add</button>
+      </div>
+      <p class="hint" data-region="tag-error" role="alert"></p>
+      <div class="sect" data-region="tag-list">${listHtml()}</div>`,
+    foot: '<button class="btn btn-primary" data-act="close-sheet" data-primary>Done</button>',
+    isDirty: () => !!d.label.trim(),
+    onClosed: () => render(),
+    actions: {
+      'tag-shown': (b) => {
+        const id = b.dataset.tag;
+        const hidden = new Set(S.settings.hiddenTags);
+        if (hidden.has(id)) hidden.delete(id);
+        else hidden.add(id);
+        S.settings.hiddenTags = [...hidden];
+        save();
+        b.setAttribute('aria-checked', !hidden.has(id));
+      },
+      'tag-add': () => {
+        const r = addCustomTag(S.settings, d.label);
+        if (r.error) { patch('tag-error', esc(r.error)); return; }
+        S.settings = r.settings;
+        save();
+        d.label = '';
+        sheet.el.querySelector('[data-field="newtag"]').value = '';
+        patch('tag-error', '');
+        patch('tag-list', listHtml());
+        toast(`${tagLabel(S.settings, r.id)} added.`);
+      },
+      'tag-delete': async (b) => {
+        const id = b.dataset.tag;
+        if (tagInUse(S, id)) return;
+        const label = tagLabel(S.settings, id);
+        const ok = await confirmDialog({ title: `Delete ${label}?`, body: "It isn't used anywhere in the diary yet.", ok: 'Delete', cancel: 'Keep it', danger: true });
+        if (!ok) return;
+        S.settings.customTags = S.settings.customTags.filter((t) => t.id !== id);
+        S.settings.hiddenTags = S.settings.hiddenTags.filter((x) => x !== id);
+        save();
+        patch('tag-list', listHtml());
+      },
+    },
+    onField: (t, type) => {
+      if (t.dataset.field === 'newtag' && type === 'input') { d.label = t.value; patch('tag-error', ''); }
+    },
+  });
+}
+
+async function clearAllData() {
+  const first = await confirmDialog({
+    title: 'Clear all data?',
+    body: `This deletes every entry, saved meal, phase, and setting in ${APP_NAME} on this phone. Back up first if you might want any of it.`,
+    ok: 'Clear everything', cancel: 'Keep my diary', danger: true,
+  });
+  if (!first) return;
+  // Deaf to taps for a moment, so one double tap can't answer both questions.
+  const second = await confirmDialog({
+    title: 'Really clear everything?', body: "This can't be undone.",
+    ok: 'Yes, clear it all', cancel: 'Keep my diary', danger: true, lockMs: 700,
+  });
+  if (!second) return;
+  // Every app on this origin shares localStorage: remove only this app's keys.
+  try {
+    for (const key of Object.keys(localStorage)) if (key.startsWith(STORE_PREFIX)) localStorage.removeItem(key);
+  } catch {}
+  S = freshState();
+  U.tab = 'today';
+  U.day = null;
+  U.ob = { step: 0, name: '', picks: {}, lockUntil: 0 };
+  save();
+  showOnboarding();
 }
 
 // ---- sheets ------------------------------------------------------------------------------
@@ -1219,27 +2012,40 @@ function logMeal(id, d) {
   });
 }
 
-function logNewFood(d) {
-  if (!hasFoodInput(d)) return;
+// "Dairy, possibly hidden soy", for sentences.
+const tagsSentence = (x) => [
+  ...x.tags.map((t) => tagLabel(S.settings, t)),
+  ...x.uncertain.map((t) => `possibly hidden ${tagLabel(S.settings, t).toLowerCase()}`),
+].join(', ') || 'no allergens';
+
+async function logNewFood(d) {
+  if (!hasFoodInput(d) || d.busy) return;
+  d.busy = true;   // a quick second tap must not log twice while the question is up
   const name = foodName(d);
-  const ts = resolveWhen(d.when);
   let meal = null, created = false, before = null, retagged = false;
   if (d.save) {
-    // Logging a name that's already saved reuses that meal rather than adding
-    // a twin, and the library takes the allergens just logged. Keeping the old
-    // ones would make every later two-tap log of it repeat the wrong tags.
+    // Logging a name that's already saved reuses that meal rather than adding a twin.
     meal = findMealByName(S.meals, name);
+    if (meal && !sameTags(meal, d)) {
+      // Different allergens this time. A one-off variation must never quietly
+      // retag every later two-tap log of the meal, so ask, and default to no.
+      retagged = await confirmDialog({
+        title: `Update your saved ${meal.name}?`,
+        body: `Saved with: ${tagsSentence(meal)}. This time: ${tagsSentence(d)}. Updating changes what future quick logs of it record.`,
+        ok: 'Update saved meal', cancel: 'Just this time',
+      });
+    }
     if (!meal) {
       meal = { id: newId(), name, tags: [...d.tags], uncertain: [...d.uncertain], useCount: 0, lastUsed: null };
       S.meals.push(meal);
       created = true;
     }
     before = { useCount: meal.useCount, lastUsed: meal.lastUsed, tags: [...meal.tags], uncertain: [...meal.uncertain] };
-    retagged = !created && !sameTags(meal, d);
-    Object.assign(meal, { tags: [...d.tags], uncertain: [...d.uncertain] });
+    if (retagged) Object.assign(meal, { tags: [...d.tags], uncertain: [...d.uncertain] });
     meal.useCount = (meal.useCount || 0) + 1;
     meal.lastUsed = nowTs();
   }
+  const ts = resolveWhen(d.when);
   const ev = { id: newId(), ts, mealId: meal ? meal.id : null, name, tags: [...d.tags], uncertain: [...d.uncertain], note: d.note.trim() };
   S.foodLog.push(ev);
   save();
@@ -1630,7 +2436,7 @@ async function deletePhase(p) {
 // Confirm sits at the bottom, in thumb reach; Cancel is the lowest button.
 let dialog = null;
 
-function confirmDialog({ title, body = '', ok = 'OK', cancel = 'Cancel', danger = false }) {
+function confirmDialog({ title, body = '', ok = 'OK', cancel = 'Cancel', danger = false, lockMs = 0 }) {
   return new Promise((resolve) => {
     const scrim = document.createElement('div');
     scrim.className = 'scrim top';
@@ -1652,9 +2458,10 @@ function confirmDialog({ title, body = '', ok = 'OK', cancel = 'Cancel', danger 
       setTimeout(() => { el.remove(); scrim.remove(); }, 240);
       resolve(value);
     };
+    const openedAt = performance.now();
     el.addEventListener('click', (e) => {
       const b = e.target.closest('[data-dlg]');
-      if (b) finish(b.dataset.dlg === 'ok');
+      if (b && performance.now() - openedAt >= lockMs) finish(b.dataset.dlg === 'ok');
     });
     scrim.addEventListener('click', () => finish(false));
     $('#layer').append(scrim, el);
@@ -1750,6 +2557,21 @@ const ACTIONS = {
   'day-prev': () => pageDay(-1),
   'day-next': () => pageDay(1),
   'day-today': () => { U.day = null; render(); },
+  'trend-range': (el) => { U.trendRange = el.dataset.range; render(); },
+  window: (el) => { S.settings.windowHours = +el.dataset.hours; save(); render(); },
+  'open-report': () => showReport(),
+  'report-close': () => { showScreen('app'); render(); },
+  'report-print': () => window.print(),
+  'report-range': (el) => {
+    const { fromDay, toDay } = trendDays(S, el.dataset.range, todayKey());
+    U.report = { preset: el.dataset.range, from: fromDay, to: toDay };
+    renderReport();
+  },
+  'export': () => exportBackup(),
+  'import': () => $('#import-file').click(),
+  'edit-name': () => openNameSheet(),
+  'edit-tags': () => openTagsSheet(),
+  'clear-all': () => clearAllData(),
   dismiss: (el) => {
     S.dismissed = [...pruneDismissed(S, nowTs()), el.dataset.key];
     save();
@@ -1841,6 +2663,17 @@ document.addEventListener('change', (e) => {
     t.value = U.ob.picks[t.dataset.since];
   } else if (t.dataset.field === 'day' && !sheet) {
     jumpToDay(t.value);
+  } else if (t.id === 'import-file') {
+    const file = t.files && t.files[0];
+    t.value = '';   // so choosing the same file again still fires
+    if (file) importBackup(file);
+  } else if ((t.dataset.field === 'report-from' || t.dataset.field === 'report-to') && U.report) {
+    const today = todayKey();
+    const value = !t.value || t.value > today ? today : t.value;
+    const next = { ...U.report, preset: null, [t.dataset.field === 'report-from' ? 'from' : 'to']: value };
+    if (next.from > next.to) [next.from, next.to] = [next.to, next.from];
+    U.report = next;
+    renderReport();
   } else if (sheet && sheet.onField && sheet.el.contains(t)) {
     sheet.onField(t, 'change');
   }
@@ -1851,9 +2684,17 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     e.target.blur();
     ACTIONS['ob-next']();
+  } else if (e.key === 'Enter' && sheet && e.target.dataset && e.target.dataset.field === 'newtag') {
+    e.preventDefault();
+    sheet.actions['tag-add']();
   } else if (e.key === 'Enter' && e.target.matches('.sheet input')) {
     e.preventDefault();
     e.target.blur();   // "done" on the keyboard just puts it away
+  } else if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key) && chartOf(e.target) === e.target && charts.has(e.target.id)) {
+    e.preventDefault();
+    const n = charts.get(e.target.id).length;
+    const cur = e.target.dataset.sel != null ? +e.target.dataset.sel : n - 1;
+    chartTip(e.target, e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : cur + (e.key === 'ArrowLeft' ? -1 : 1));
   } else if (e.key === 'Escape') {
     if (dialog) dialog.finish(false);
     else if (sheet) requestCloseSheet();

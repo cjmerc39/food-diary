@@ -446,6 +446,104 @@ export function suspects(state, { from, to, windowHours, now, minWeight = 2 }) {
   return { ranked, notEnough, baseline, totalPoints, hours, windowHours };
 }
 
+// ---- trends and report -------------------------------------------------------
+
+export const TREND_RANGES = { '2w': 14, '4w': 28, '8w': 56, all: null };
+
+export function firstEntryDay(state) {
+  let first = null;
+  for (const e of [...state.foodLog, ...state.symptomLog]) {
+    if (isTs(e.ts) && (first === null || e.ts < first)) first = e.ts;
+  }
+  return first && dayKey(first);
+}
+
+// The days a Trends range covers, ending today. "all" starts at the first
+// logged entry (or today, before there is one).
+export function trendDays(state, range, today) {
+  const n = TREND_RANGES[range];
+  const first = firstEntryDay(state);
+  const fromDay = n ? addDays(today, -(n - 1)) : first && first < today ? first : today;
+  return { fromDay, toDay: today };
+}
+
+// Daily load for the chart. Days before the diary's first entry are marked
+// as having no data, so a new diary doesn't draw a flat line of false calm.
+export function trendSeries(state, fromDay, toDay) {
+  const first = firstEntryDay(state);
+  return loadSeries(state.symptomLog, fromDay, toDay).map((d) => ({ ...d, hasData: first !== null && d.day >= first }));
+}
+
+// A chart color slot per phase tag, in order of each tag's first phase. Colors
+// follow the food, not its position in the current range, so zooming the
+// range never repaints a band. Past `max` tags, the rest share -1 (neutral).
+export function phaseTagSlots(phases, max = 8) {
+  const ordered = phases.filter((p) => isTs(p.start)).sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+  const slots = new Map();
+  let next = 0;
+  for (const p of ordered) {
+    if (slots.has(p.tag)) continue;
+    slots.set(p.tag, next < max ? next : -1);
+    next++;
+  }
+  return slots;
+}
+
+// Every entry from fromDay through toDay, oldest first, for the report's log.
+export function rangeEntries(state, fromDay, toDay) {
+  const rows = [];
+  const inRange = (e) => isTs(e.ts) && dayKey(e.ts) >= fromDay && dayKey(e.ts) <= toDay;
+  for (const e of state.foodLog) if (inRange(e)) rows.push({ kind: 'food', e });
+  for (const e of state.symptomLog) if (inRange(e)) rows.push({ kind: 'symptom', e });
+  return rows.sort((a, b) => (a.e.ts < b.e.ts ? -1 : a.e.ts > b.e.ts ? 1 : 0));
+}
+
+// ---- tags in settings --------------------------------------------------------
+
+// Adds a custom allergen tag, id slugified from the label.
+// Returns { settings, id } or { error }.
+export function addCustomTag(settings, label) {
+  const name = String(label).trim().replace(/\s+/g, ' ');
+  const id = slugify(name);
+  if (!id) return { error: 'Use at least one letter or number.' };
+  const clash = allTags(settings).find((t) => t.id === id || normName(t.label) === normName(name));
+  if (clash) return { error: `${clash.label} is already on the list.` };
+  return { id, settings: { ...settings, customTags: [...settings.customTags, { id, label: name }] } };
+}
+
+// Whether a tag appears anywhere in the diary. Tags in use can be hidden but
+// never deleted, so history keeps its labels.
+export function tagInUse(state, id) {
+  const onMeal = (m) => (m.tags || []).includes(id) || (m.uncertain || []).includes(id);
+  return state.meals.some(onMeal) || state.foodLog.some(onMeal) || state.phases.some((p) => p.tag === id);
+}
+
+// ---- backups -----------------------------------------------------------------
+
+// Merges an imported diary into the current one, matching entries by id.
+// Anything the current diary lacks is added; on a clash the current copy wins,
+// so importing an older backup can never undo edits made since. Returns a new
+// state (inputs untouched) and how many of each were added.
+export function mergeStates(current, incoming) {
+  const out = { ...current, settings: { ...current.settings } };
+  const added = {};
+  for (const k of ['meals', 'foodLog', 'symptomLog', 'phases']) {
+    const have = new Set(current[k].map((x) => x.id));
+    const extra = incoming[k].filter((x) => isObj(x) && x.id != null && !have.has(x.id));
+    added[k] = extra.length;
+    out[k] = [...current[k], ...extra];
+  }
+  const customIds = new Set(current.settings.customTags.map((t) => t.id));
+  out.settings.customTags = [...current.settings.customTags,
+    ...incoming.settings.customTags.filter((t) => isObj(t) && t.id && !customIds.has(t.id))];
+  out.settings.hiddenTags = [...new Set([...current.settings.hiddenTags, ...incoming.settings.hiddenTags])];
+  out.dismissed = [...new Set([...current.dismissed, ...incoming.dismissed])];
+  if (!out.babyName && incoming.babyName) out.babyName = incoming.babyName;
+  if (incoming.lastBackup && (!out.lastBackup || incoming.lastBackup > out.lastBackup)) out.lastBackup = incoming.lastBackup;
+  out.onboarded = current.onboarded || incoming.onboarded;
+  return { state: out, added };
+}
+
 // ---- display -----------------------------------------------------------------
 
 // Height for the installed app's shell. iOS standalone mode has mis-reported

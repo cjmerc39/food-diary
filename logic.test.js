@@ -450,6 +450,102 @@ test('DST: a 24h window after an exposure is 24 real hours across spring forward
   assert.equal(r.hours, 23, 'the spring-forward day has 23 hours');
 });
 
+// ---- trends and report -------------------------------------------------------
+
+test('trendDays ends today and "all" starts at the first entry', () => {
+  const s = diary({ foodLog: [food('f1', '2026-08-03T09:00')], symptomLog: [sym('s1', '2026-08-01T22:00', 'crying', 1)] });
+  assert.deepEqual(L.trendDays(s, '2w', '2026-09-13'), { fromDay: '2026-08-31', toDay: '2026-09-13' });
+  assert.deepEqual(L.trendDays(s, '8w', '2026-09-13'), { fromDay: '2026-07-20', toDay: '2026-09-13' });
+  assert.deepEqual(L.trendDays(s, 'all', '2026-09-13'), { fromDay: '2026-08-01', toDay: '2026-09-13' });
+  assert.deepEqual(L.trendDays(diary(), 'all', '2026-09-13'), { fromDay: '2026-09-13', toDay: '2026-09-13' });
+  assert.equal(L.firstEntryDay(diary()), null);
+});
+
+test('trendSeries marks days before the first entry as no data', () => {
+  const s = diary({ symptomLog: [sym('s1', '2026-09-11T10:00', 'stool', 2, ['blood'])] });
+  const series = L.trendSeries(s, '2026-09-09', '2026-09-12');
+  assert.deepEqual(series.map((d) => [d.day, d.hasData, d.load]), [
+    ['2026-09-09', false, 0], ['2026-09-10', false, 0], ['2026-09-11', true, 4], ['2026-09-12', true, 0],
+  ]);
+});
+
+test('phaseTagSlots assigns colors by each food\'s first phase and folds past the limit', () => {
+  const phases = [
+    phase('2026-09-10T00:00', null, { kind: 'reintroduce' }),
+    phase('2026-08-27T00:00', null, { tag: 'soy' }),
+    phase('2026-08-20T00:00'),
+    phase('2026-09-01T00:00', null, { tag: 'egg' }),
+  ];
+  assert.deepEqual([...L.phaseTagSlots(phases)], [['dairy', 0], ['soy', 1], ['egg', 2]]);
+  assert.deepEqual([...L.phaseTagSlots(phases, 2)], [['dairy', 0], ['soy', 1], ['egg', -1]]);
+  assert.deepEqual([...L.phaseTagSlots([])], []);
+});
+
+test('rangeEntries lists a day range oldest first, food and symptoms together', () => {
+  const s = diary({
+    foodLog: [food('f1', '2026-09-12T08:00'), food('f2', '2026-09-10T23:59'), food('f3', '2026-09-14T00:00')],
+    symptomLog: [sym('s1', '2026-09-11T12:00', 'crying', 1), sym('s2', '2026-09-13T23:59', 'skin', 1)],
+  });
+  assert.deepEqual(L.rangeEntries(s, '2026-09-11', '2026-09-13').map((r) => r.e.id), ['s1', 'f1', 's2']);
+});
+
+// ---- tags in settings --------------------------------------------------------
+
+test('addCustomTag slugifies, and refuses blanks and duplicates', () => {
+  const base = L.freshState().settings;
+  const r = L.addCustomTag(base, '  Sesame  seeds ');
+  assert.equal(r.id, 'sesame-seeds');
+  assert.deepEqual(r.settings.customTags, [{ id: 'sesame-seeds', label: 'Sesame seeds' }]);
+  assert.deepEqual(base.customTags, [], 'input settings untouched');
+  assert.ok(L.addCustomTag(r.settings, 'sesame SEEDS').error.includes('already'));
+  assert.ok(L.addCustomTag(base, 'Dairy').error.includes('Dairy'));
+  assert.ok(L.addCustomTag(base, '!!!').error);
+});
+
+test('tagInUse looks at saved meals, entries, and phases', () => {
+  const s = diary({
+    meals: [{ id: 'm1', name: 'Toast', tags: ['wheat'], uncertain: ['sesame'], useCount: 1, lastUsed: null }],
+    foodLog: [food('f1', '2026-09-12T08:00', [], ['corn'])],
+    phases: [phase('2026-09-01T00:00', null, { tag: 'egg' })],
+  });
+  for (const id of ['wheat', 'sesame', 'corn', 'egg']) assert.equal(L.tagInUse(s, id), true, id);
+  assert.equal(L.tagInUse(s, 'fish'), false);
+});
+
+// ---- backups -----------------------------------------------------------------
+
+test('mergeStates adds what is missing and keeps the current copy on a clash', () => {
+  const current = diary({
+    babyName: '',
+    settings: { windowHours: 48, customTags: [{ id: 'sesame', label: 'Sesame' }], hiddenTags: ['corn'] },
+    foodLog: [food('f1', '2026-09-12T08:00', ['wheat'])],
+    phases: [phase('2026-08-20T00:00')],
+    dismissed: ['f1:wheat'],
+    lastBackup: '2026-09-01T10:00',
+  });
+  const incoming = diary({
+    babyName: 'Rowan',
+    settings: { windowHours: 6, customTags: [{ id: 'sesame', label: 'Old label' }, { id: 'oats', label: 'Oats' }], hiddenTags: ['fish'] },
+    foodLog: [food('f1', '2026-09-12T08:00', ['dairy']), food('f2', '2026-09-11T19:00', ['soy'])],
+    symptomLog: [sym('s1', '2026-09-11T22:00', 'crying', 2)],
+    meals: [{ id: 'm1', name: 'Toast', tags: [], uncertain: [], useCount: 3, lastUsed: null }],
+    dismissed: ['f2:soy'],
+    lastBackup: '2026-09-10T10:00',
+  });
+  const before = JSON.stringify(current);
+  const { state: s, added } = L.mergeStates(current, incoming);
+  assert.deepEqual(added, { meals: 1, foodLog: 1, symptomLog: 1, phases: 0 });
+  assert.deepEqual(s.foodLog.map((e) => [e.id, e.tags.join()]), [['f1', 'wheat'], ['f2', 'soy']], 'current f1 wins');
+  assert.equal(s.settings.windowHours, 48);
+  assert.deepEqual(s.settings.customTags, [{ id: 'sesame', label: 'Sesame' }, { id: 'oats', label: 'Oats' }]);
+  assert.deepEqual(s.settings.hiddenTags, ['corn', 'fish']);
+  assert.deepEqual(s.dismissed, ['f1:wheat', 'f2:soy']);
+  assert.equal(s.babyName, 'Rowan', 'fills a missing name');
+  assert.equal(s.lastBackup, '2026-09-10T10:00');
+  assert.equal(JSON.stringify(current), before, 'current diary object untouched');
+  assert.deepEqual(L.mergeStates(s, incoming).added, { meals: 0, foodLog: 0, symptomLog: 0, phases: 0 }, 'merging twice adds nothing');
+});
+
 // ---- state -------------------------------------------------------------------
 
 test('readState with nothing saved gives a fresh, not-yet-onboarded diary', () => {
