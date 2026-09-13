@@ -70,8 +70,13 @@ try{var t=localStorage.getItem('food-diary:theme');if(t==='light'||t==='dark')do
    overlays are positioned inside the body rather than with position:fixed. */
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
-html{height:100%;background:var(--bg);touch-action:manipulation;-webkit-text-size-adjust:100%}
-body{position:relative;height:100%;display:flex;flex-direction:column;overflow:hidden;
+/* The shell must never scroll, not even by script. Body's overflow alone gets
+   handed to the viewport, so html hides its own; and body clips rather than
+   hides, because a hidden box is still a scroll container: sheets sliding in
+   and out below the shell left room in it, and a focus (tapping OK in a
+   dialog) then scrolled the whole app up. */
+html{height:100%;overflow:hidden;background:var(--bg);touch-action:manipulation;-webkit-text-size-adjust:100%}
+body{position:relative;height:100%;display:flex;flex-direction:column;overflow:hidden;overflow:clip;
   background:var(--bg);color:var(--ink);font:17px/1.45 var(--sans)}
 @supports (height:100dvh){body{height:100dvh}}
 @media (display-mode: standalone){body{height:var(--app-h,100%)}}
@@ -359,6 +364,15 @@ svg{display:block;flex:none}
 .opt[aria-checked="true"] .num{background:var(--sym-on);color:var(--sym-ink)}
 .opt[aria-checked="true"] .opt-sub,.opt[aria-checked="true"] .opt-warn{color:var(--sym-on)}
 .flagpick .chip[aria-pressed="true"]{background:var(--sym);border-color:var(--sym);color:var(--sym-on)}
+/* several symptoms in one pass: each picked category gets its own section */
+.symset{display:block}
+.symset + .symset{margin-top:22px;padding-top:4px;border-top:1px solid var(--line)}
+.symset-title{display:flex;align-items:center;gap:8px;margin-top:18px;font:600 18px/1.3 var(--round)}
+.symset-title svg{width:22px;height:22px;color:var(--sym)}
+.symset-title + .sect{margin-top:10px}
+.set-chip[aria-pressed="true"]{background:var(--sym);color:var(--sym-on)}
+.set-chip[aria-pressed="true"] .mc-tags{color:var(--sym-on);opacity:.85}
+.set-chip[data-calm="true"]:active{transform:none}   /* holds severity 3, watery, or blood: no bounce */
 .caution{display:flex;align-items:flex-start;gap:10px;margin-top:10px;padding:12px 14px;border-radius:14px;
   background:var(--danger-soft);color:var(--danger);font-weight:600;font-size:16px}
 .caution svg{width:22px;height:22px;margin-top:1px}
@@ -603,7 +617,7 @@ import {
   symptomMissing, symptomFields, dayEntries, exposureBanners, pruneDismissed, reintroWatches,
   standaloneHeight, LOAD_CATS, WINDOW_CHOICES, TREND_RANGES, daysBetween, slugify,
   trendDays, trendSeries, phaseBands, phaseTagSlots, suspects, rangeEntries,
-  addCustomTag, tagInUse, mergeStates, readBackup, APP_ID, backupReminder, dayGlance, dayRest, welcomeVariant,
+  addCustomTag, tagInUse, mergeStates, readBackup, APP_ID, backupReminder, dayGlance, dayRest, welcomeVariant, setItem,
 } from './logic.js';
 
 // ---- identity ------------------------------------------------------------------
@@ -612,7 +626,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 10;
+const BUILD = 11;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -1800,7 +1814,8 @@ function showDiary() {
 }
 
 const diaryCounts = (s) => [plural(s.foodLog.length, 'food entry', 'food entries'), plural(s.symptomLog.length, 'symptom'),
-  plural(s.phases.length, 'phase'), plural(s.meals.length, 'saved meal')].join(', ');
+  plural(s.phases.length, 'phase'), plural(s.meals.length, 'saved meal'),
+  ...(s.symptomSets.length ? [plural(s.symptomSets.length, 'symptom set')] : [])].join(', ');
 
 function openImportSheet(incoming, fileName, skipped = 0) {
   const merged = mergeStates(S, incoming);
@@ -2479,95 +2494,159 @@ async function deleteEntry(kind, id) {
 }
 
 // ---- + symptom -------------------------------------------------------------------------
-// Common case, a loose diaper: + symptom, Stool, Loose, Log. Four taps.
-function openSymptomSheet(id = null) {
+// Common case, a loose diaper: + symptom, Stool, Loose, Log. Four taps. Several
+// categories can be picked in one pass: each expands inline under the grid, and
+// one Log saves them as separate events sharing one time. A saved set fills the
+// sheet in one tap. Editing an existing event stays one category.
+//
+// Draft: { order: [cat...] in the order picked, items: { cat: { severity,
+// consistency, flags, note } }, when, setId }.
+const blankItem = () => ({ severity: null, consistency: null, flags: [], note: '' });
+const itemDraft = (d, c) => ({ cat: c, ...d.items[c] });   // one item, shaped for symptomMissing / symptomFields
+const newSymptomDraft = () => ({ order: [], items: {}, when: defaultWhen(), setId: null });
+const symptomTouched = (d) => d.order.some((c) => {
+  const it = d.items[c];
+  return it.severity != null || it.consistency || it.flags.length || it.note.trim();
+});
+
+function fillFromSet(d, set) {
+  d.order = [];
+  d.items = {};
+  for (const it of set.items) {
+    if (d.items[it.cat]) continue;
+    d.order.push(it.cat);
+    d.items[it.cat] = { ...blankItem(), severity: it.cat === 'stool' ? null : it.severity, consistency: it.consistency || null, flags: [...(it.flags || [])] };
+  }
+  d.setId = set.id;
+}
+
+function openSymptomSheet(id = null, draft = null) {
   const ev = id ? S.symptomLog.find((e) => e.id === id) : null;
   if (id && !ev) return;
-  const d = ev
-    ? { cat: ev.cat, severity: ev.cat === 'stool' ? null : ev.severity, consistency: ev.consistency || null, flags: [...(ev.flags || [])], note: ev.note || '', when: { mode: 'at', ts: ev.ts } }
-    : { cat: null, severity: null, consistency: null, flags: [], note: '', when: defaultWhen() };
+  const d = draft || newSymptomDraft();
+  if (ev) {
+    d.order = [ev.cat];
+    d.items[ev.cat] = { severity: ev.cat === 'stool' ? null : ev.severity, consistency: ev.consistency || null, flags: [...(ev.flags || [])], note: ev.note || '' };
+    d.when = { mode: 'at', ts: ev.ts };
+  }
+  if (d.setId && !S.symptomSets.some((x) => x.id === d.setId)) d.setId = null;   // back from editing: the set may be gone
   const start = JSON.stringify(d);
-  const refresh = () => { fillSheet({ body: symptomBody(d) }); setFoot(symptomState(d, !!ev)); };
+  const refresh = () => { fillSheet({ body: symptomBody(d, !!ev) }); setFoot(symptomState(d, !!ev)); };
   openSheet({
     title: ev ? 'Edit symptom' : 'Log a symptom',
-    body: symptomBody(d),
+    body: symptomBody(d, !!ev),
     foot: symptomFoot(d, !!ev),
-    isDirty: ev ? () => JSON.stringify(d) !== start : () => !!(d.severity != null || d.consistency || d.flags.length || d.note.trim()),
+    isDirty: ev ? () => JSON.stringify(d) !== start : () => symptomTouched(d),
     actions: {
-      cat: (b) => {
-        const c = b.dataset.cat;
-        if (c !== d.cat) {
-          Object.assign(d, { cat: c, severity: null, consistency: null });
-          d.flags = d.flags.filter((f) => (CAT_FLAGS[c] || []).includes(f));
-        }
+      ...symptomPickActions(d, refresh, { single: !!ev }),
+      'set-fill': (b) => {
+        const set = S.symptomSets.find((x) => x.id === b.dataset.id);
+        if (!set) return;
+        fillFromSet(d, set);
         refresh();
       },
-      sev: (b) => { d.severity = +b.dataset.sev; refresh(); },
-      stool: (b) => { d.consistency = b.dataset.stool; refresh(); },
-      flag: (b) => {
-        const f = b.dataset.flag;
-        d.flags = d.flags.includes(f) ? d.flags.filter((x) => x !== f) : [...d.flags, f];
-        refresh();
-        if (f === 'blood' && d.flags.includes('blood')) revealInSheet('.caution');
-      },
+      'set-edit': (b) => openSetSheet(b.dataset.id, () => openSymptomSheet(null, d)),   // comes back with the draft intact
       when: whenAction(d),
-      'sym-log': () => saveSymptom(d, ev),
+      'sym-log': () => (ev ? saveSymptom(d, ev) : logSymptoms(d)),
       delete: () => deleteEntry('symptom', ev.id),
     },
     onField: (t, type) => {
-      if (t.dataset.field === 'note') d.note = t.value;
+      if (t.dataset.field === 'note') { const it = d.items[t.dataset.cat]; if (it) it.note = t.value; }
       else if (t.dataset.field === 'when' && type === 'change') whenField(d, t);
     },
   });
 }
 
+// The category grid and its expanded sections, shared with the set editor.
+// single: one category at a time (editing an event); a switch keeps the note.
+function symptomPickActions(d, refresh, { single = false } = {}) {
+  return {
+    cat: (b) => {
+      const c = b.dataset.cat;
+      if (single) {
+        const prev = d.items[d.order[0]];
+        if (d.order[0] !== c) { d.order = [c]; d.items = { [c]: { ...blankItem(), note: prev ? prev.note : '' } }; }
+      } else if (d.items[c]) {
+        d.order = d.order.filter((x) => x !== c);
+        delete d.items[c];
+      } else {
+        d.order.push(c);
+        d.items[c] = blankItem();
+      }
+      refresh();
+      if (!single && d.items[c]) revealInSheet(`[data-symset="${c}"] .opts, [data-symset="${c}"] .textarea`);
+    },
+    sev: (b) => { d.items[b.dataset.cat].severity = +b.dataset.sev; refresh(); },
+    stool: (b) => { d.items[b.dataset.cat].consistency = b.dataset.stool; refresh(); },
+    flag: (b) => {
+      const it = d.items[b.dataset.cat], f = b.dataset.flag;
+      it.flags = it.flags.includes(f) ? it.flags.filter((x) => x !== f) : [...it.flags, f];
+      refresh();
+      if (f === 'blood' && it.flags.includes('blood')) revealInSheet(`[data-symset="${b.dataset.cat}"] .caution`);
+    },
+  };
+}
+
 const noteHtml = (d, label, placeholder) => `<label class="sect"><span class="sect-label">${label}</span>
   <textarea class="textarea" data-field="note" rows="2" maxlength="500" placeholder="${placeholder}">${esc(d.note)}</textarea></label>`;
 
-function symptomBody(d) {
-  const cats = SYMPTOM_CATS.map((c) =>
-    `<button class="cat" data-act="cat" data-cat="${c}" aria-pressed="${d.cat === c}">${ICON[c]}<span>${CATS[c].label}</span></button>`).join('');
-  return `<div class="cat-grid" role="group" aria-label="What did you notice?">${cats}</div>${d.cat ? symptomDetailHtml(d) : ''}`;
+const catGridHtml = (d, label) => `<div class="cat-grid" role="group" aria-label="${label}">${SYMPTOM_CATS.map((c) =>
+  `<button class="cat" data-act="cat" data-cat="${c}" aria-pressed="${!!d.items[c]}">${ICON[c]}<span>${CATS[c].label}</span></button>`).join('')}</div>`;
+
+function symptomBody(d, editing) {
+  const sets = !editing && S.symptomSets.length ? symptomSetsHtml(d) : '';
+  return `${sets}${catGridHtml(d, editing ? 'What did you notice?' : 'What did you notice? Pick one or more.')}
+    ${d.order.map((c) => symptomSectionHtml(d, c, { titled: d.order.length > 1 })).join('')}
+    ${d.order.length ? `<div class="sect"><span class="sect-label">When</span><div data-region="when">${whenHtml(d.when)}</div></div>` : ''}`;
 }
 
-function symptomDetailHtml(d) {
-  const c = d.cat;
-  let html = c === 'other' ? noteHtml(d, 'What happened?', 'Describe it') : '';
+// One picked category: its severity or consistency, flags, and note. Every
+// control carries data-cat so the shared actions know which item it belongs to.
+function symptomSectionHtml(d, c, { titled = false, notes = true } = {}) {
+  const it = d.items[c];
+  const note = (label, placeholder) => (notes ? `<label class="sect"><span class="sect-label">${label}</span>
+    <textarea class="textarea" data-field="note" data-cat="${c}" rows="2" maxlength="500" placeholder="${placeholder}">${esc(it.note)}</textarea></label>` : '');
+  let html = c === 'other' ? note('What happened?', 'Describe it') : '';
   if (c === 'stool') {
     html += `<div class="sect"><span class="sect-label">Consistency</span><div class="opts" role="radiogroup" aria-label="Consistency">${STOOLS.map((s) => `
-      <button class="opt" role="radio" data-act="stool" data-stool="${s.id}" aria-checked="${d.consistency === s.id}">
+      <button class="opt" role="radio" data-act="stool" data-cat="${c}" data-stool="${s.id}" aria-checked="${it.consistency === s.id}">
         <span class="num">${STOOL_SEVERITY[s.id]}</span><span class="opt-text">${s.label}${s.sub ? `<span class="opt-sub">${s.sub}</span>` : ''}</span></button>`).join('')}
       </div></div>`;
   } else {
     html += `<div class="sect"><span class="sect-label">How bad?</span><div class="opts" role="radiogroup" aria-label="Severity">${[1, 2, 3].map((n) => `
-      <button class="opt" role="radio" data-act="sev" data-sev="${n}" aria-checked="${d.severity === n}">
+      <button class="opt" role="radio" data-act="sev" data-cat="${c}" data-sev="${n}" aria-checked="${it.severity === n}">
         <span class="num">${n}</span><span class="opt-text">${esc(CATS[c].anchors[n - 1])}${c === 'resp' && n === 3 ? `<span class="opt-warn">${RESP_WARNING}</span>` : ''}</span></button>`).join('')}
       </div></div>`;
   }
   if (CAT_FLAGS[c]) {
     html += `<div class="sect"><span class="sect-label">Also noticed</span>
-      <div class="chips flagpick">${CAT_FLAGS[c].map((f) => `<button class="chip" data-act="flag" data-flag="${f}" aria-pressed="${d.flags.includes(f)}">${FLAG_LABELS[f]}</button>`).join('')}</div>
-      ${d.flags.includes('blood') ? `<p class="caution" role="note">${ICON.alert}<span>${BLOOD_WARNING}</span></p>` : ''}</div>`;
+      <div class="chips flagpick">${CAT_FLAGS[c].map((f) => `<button class="chip" data-act="flag" data-cat="${c}" data-flag="${f}" aria-pressed="${it.flags.includes(f)}">${FLAG_LABELS[f]}</button>`).join('')}</div>
+      ${it.flags.includes('blood') ? `<p class="caution" role="note">${ICON.alert}<span>${BLOOD_WARNING}</span></p>` : ''}</div>`;
   }
-  html += `<div class="sect"><span class="sect-label">When</span><div data-region="when">${whenHtml(d.when)}</div></div>`;
-  if (c !== 'other') html += noteHtml(d, 'Note', 'Optional');
-  return html;
+  if (c !== 'other') html += note('Note', 'Optional');
+  return `<section class="symset" data-symset="${c}">${titled ? `<h3 class="symset-title">${ICON[c]}<span>${CATS[c].label}</span></h3>` : ''}${html}</section>`;
 }
 
 const SYMPTOM_HINTS = {
   category: 'Pick what you noticed.',
+  categories: 'Pick what you noticed, one or several.',
   consistency: 'Pick a consistency.',
   severity: 'Pick how bad it is.',
   formed: 'A formed stool is normal. Add mucus or blood to log it.',
 };
 
+// Footer state: every picked category has to be complete before Log.
 function symptomState(d, editing) {
-  const missing = symptomMissing(d);
-  return {
-    hint: SYMPTOM_HINTS[missing] || '',
-    disabled: !!missing,
-    label: editing ? 'Save' : missing ? 'Log' : `Log ${symptomName(d).toLowerCase()}`,
-  };
+  const idle = editing ? 'Save' : 'Log';
+  if (!d.order.length) return { hint: SYMPTOM_HINTS[editing ? 'category' : 'categories'], disabled: true, label: idle };
+  for (const c of d.order) {
+    const missing = symptomMissing(itemDraft(d, c));
+    if (!missing) continue;
+    const hint = SYMPTOM_HINTS[missing];
+    return { hint: d.order.length > 1 ? `${CATS[c].label}: ${hint[0].toLowerCase()}${hint.slice(1)}` : hint, disabled: true, label: idle };
+  }
+  const label = editing ? 'Save' : d.order.length === 1 ? `Log ${symptomName(itemDraft(d, d.order[0])).toLowerCase()}` : `Log ${d.order.length} symptoms`;
+  return { hint: '', disabled: false, label };
 }
 
 function symptomFoot(d, editing) {
@@ -2579,27 +2658,154 @@ function symptomFoot(d, editing) {
 }
 
 function saveSymptom(d, ev) {
-  if (symptomMissing(d)) return;
-  const fields = symptomFields(d);
+  const c = d.order[0];
+  if (!c || symptomMissing(itemDraft(d, c))) return;
   const ts = resolveWhen(d.when);
-  if (ev) {
-    delete ev.consistency;
-    Object.assign(ev, fields, { ts });
-    save();
-    closeSheet();
-    render();
-    toast(dayKey(ts) === viewDay() ? 'Saved.' : `Saved, and moved to ${whenLabel(ts)}.`, { icon: 'check' });
-    return;
-  }
-  const e = { id: newId(), ts, ...fields };
-  S.symptomLog.push(e);
+  delete ev.consistency;
+  Object.assign(ev, symptomFields(itemDraft(d, c)), { ts });
   save();
   closeSheet();
   render();
-  toast(`Logged ${symptomName(e).toLowerCase()}, ${whenLabel(ts)}`, {
-    ms: 6000,
+  toast(dayKey(ts) === viewDay() ? 'Saved.' : `Saved, and moved to ${whenLabel(ts)}.`, { icon: 'check' });
+}
+
+// Logs every picked category as its own event, all at the same time. Undo
+// removes the whole batch. A batch not made from a set can be kept as one.
+function logSymptoms(d) {
+  if (!d.order.length || d.order.some((c) => symptomMissing(itemDraft(d, c)))) return;
+  const ts = resolveWhen(d.when);
+  const events = d.order.map((c) => ({ id: newId(), ts, ...symptomFields(itemDraft(d, c)) }));
+  S.symptomLog.push(...events);
+  const set = d.setId ? S.symptomSets.find((x) => x.id === d.setId) : null;
+  const before = set ? { useCount: set.useCount, lastUsed: set.lastUsed } : null;
+  if (set) {
+    set.useCount = (set.useCount || 0) + 1;
+    set.lastUsed = nowTs();
+  }
+  save();
+  closeSheet();
+  render();
+  const undo = () => {
+    const ids = new Set(events.map((e) => e.id));
+    S.symptomLog = S.symptomLog.filter((x) => !ids.has(x.id));
+    if (set) Object.assign(set, before);
+    save();
+    render();
+    toast('Removed.');
+  };
+  const many = events.length > 1;
+  toast(`Logged ${many ? `${events.length} symptoms` : symptomName(events[0]).toLowerCase()}, ${whenLabel(ts)}`, {
+    ms: many ? 8000 : 6000,
     icon: 'check',
-    actions: [{ label: 'Undo', fn: () => { S.symptomLog = S.symptomLog.filter((x) => x.id !== e.id); save(); render(); toast('Removed.'); } }],
+    actions: [
+      ...(many && !set ? [{ label: 'Save as set', fn: () => openSaveSetSheet(events) }] : []),
+      { label: 'Undo', fn: undo },
+    ],
+  });
+}
+
+// ---- symptom sets ----------------------------------------------------------------------
+// A set is a remembered pass through the sheet: which categories, how bad,
+// which flags. Logging from one writes plain events; nothing downstream knows
+// sets exist.
+const setIsCalm = (set) => set.items.some((it) => it.severity === 3 || it.consistency === 'watery' || (it.flags || []).includes('blood'));
+const setSummary = (items) => items.map((it) => [
+  `${symptomName(it)}${it.cat === 'stool' ? '' : ` ${it.severity}`}`,
+  ...(it.flags || []).map((f) => FLAG_LABELS[f].toLowerCase()),
+].join(', ')).join(' · ');
+const setNameFor = (items) => items.map((it) => symptomName(it)).join(' + ');
+
+function symptomSetsHtml(d) {
+  const chips = rankMeals(S.symptomSets, nowTs(), 12).map((set) =>
+    `<button class="meal-chip set-chip" data-act="set-fill" data-hold="set-edit" data-id="${esc(set.id)}" aria-pressed="${d.setId === set.id}"${setIsCalm(set) ? ' data-calm="true"' : ''}>
+      <span class="mc-name">${esc(set.name)}</span><span class="mc-tags">${esc(setSummary(set.items))}</span></button>`).join('');
+  return `<p class="sect sect-label">Your sets</p><div class="meal-grid">${chips}</div>
+    <p class="hint">Tap a set to fill in the sheet. Press and hold to edit it.</p>`;
+}
+
+function openSaveSetSheet(events) {
+  const items = events.map(setItem);
+  const d = { name: setNameFor(items) };
+  openSheet({
+    title: 'Save as a set',
+    body: `<p class="lede">Next time, one tap fills in these symptoms, ready to adjust or log as they are.</p>
+      <label class="sect"><span class="sect-label">Name</span>
+        <input class="input" type="text" data-field="name" value="${esc(d.name)}" maxlength="60" autocomplete="off" enterkeyhint="done"></label>
+      <div class="card inset sect"><span class="sect-label">In this set</span><p>${esc(setSummary(items))}</p></div>`,
+    foot: `<div class="foot-row"><button class="btn" data-act="close-sheet">Cancel</button>
+      <button class="btn btn-symptom" data-act="set-save" data-primary>Save set</button></div>`,
+    actions: {
+      'set-save': () => {
+        const name = d.name.trim();
+        if (!name) return;
+        S.symptomSets.push({ id: newId(), name, items, useCount: 1, lastUsed: nowTs() });   // this log was its first use
+        save();
+        closeSheet();
+        toast(`Saved ${name} as a set.`, { icon: 'check' });
+      },
+    },
+    onField: (t, type) => {
+      if (t.dataset.field === 'name' && type === 'input') { d.name = t.value; setFoot({ disabled: !d.name.trim() }); }
+    },
+  });
+}
+
+// Editing a set changes future fills only; logged events keep what they were logged with.
+function openSetSheet(id, back = null) {
+  const set = S.symptomSets.find((x) => x.id === id);
+  if (!set) return;
+  const d = { name: set.name, order: [], items: {} };
+  fillFromSet(d, set);
+  const start = JSON.stringify(d);
+  const state = () => {
+    let hint = !d.name.trim() ? 'Give the set a name.' : !d.order.length ? 'Pick at least one symptom.' : '';
+    for (const c of d.order) {
+      if (hint) break;
+      const missing = symptomMissing(itemDraft(d, c));
+      if (missing) hint = `${CATS[c].label}: ${SYMPTOM_HINTS[missing][0].toLowerCase()}${SYMPTOM_HINTS[missing].slice(1)}`;
+    }
+    return { hint, disabled: !!hint };
+  };
+  const body = () => `<p class="lede">Changes apply the next time you use it. Symptoms already logged stay as they are.</p>
+    <label class="sect"><span class="sect-label">Name</span>
+      <input class="input" type="text" data-field="name" value="${esc(d.name)}" maxlength="60" autocomplete="off" enterkeyhint="done"></label>
+    <div class="sect"><span class="sect-label">Symptoms</span>${catGridHtml(d, 'Symptoms in this set')}</div>
+    ${d.order.map((c) => symptomSectionHtml(d, c, { titled: true, notes: false })).join('')}
+    <p class="fine sect">Used ${plural(set.useCount || 0, 'time')}.</p>`;
+  const refresh = () => { fillSheet({ body: body() }); setFoot(state()); };
+  closeSheet(true);
+  openSheet({
+    title: 'Edit set',
+    body: body(),
+    foot: `<p class="foot-hint">${state().hint}</p>
+      <div class="foot-row"><button class="btn btn-quiet-danger" data-act="set-remove">Remove</button>
+      <button class="btn btn-symptom" data-act="set-save" data-primary${state().disabled ? ' disabled' : ''}>Save set</button></div>`,
+    isDirty: () => JSON.stringify(d) !== start,
+    actions: {
+      ...symptomPickActions(d, refresh),
+      'set-save': () => {
+        if (state().disabled) return;
+        Object.assign(set, { name: d.name.trim(), items: d.order.map((c) => setItem(itemDraft(d, c))) });
+        save();
+        closeSheet();
+        toast('Set saved.', { icon: 'check' });
+      },
+      'set-remove': async () => {
+        const ok = await confirmDialog({
+          title: `Remove the ${set.name} set?`, body: 'Symptoms already logged with it stay in the diary.',
+          ok: 'Remove', cancel: 'Keep it', danger: true,
+        });
+        if (!ok) return;
+        S.symptomSets = S.symptomSets.filter((x) => x.id !== set.id);
+        save();
+        closeSheet();
+        toast('Set removed.');
+      },
+    },
+    onField: (t, type) => {
+      if (t.dataset.field === 'name' && type === 'input') { d.name = t.value; setFoot(state()); }
+    },
+    onClosed: back,   // back to the symptom sheet it was opened from
   });
 }
 

@@ -246,6 +246,12 @@ export function symptomFields(d) {
   return fields;
 }
 
+// A symptom set item from a ready draft: the event fields without the note.
+export function setItem(d) {
+  const { note, ...item } = symptomFields(d);
+  return item;
+}
+
 // Points one symptom event adds: its severity plus its flags' points.
 export function eventPoints(e) {
   let points = Number.isFinite(e.severity) ? e.severity : 0;
@@ -583,11 +589,12 @@ export function tagInUse(state, id) {
 export function mergeStates(current, incoming) {
   const out = { ...current, settings: { ...current.settings } };
   const added = {};
-  for (const k of ['meals', 'foodLog', 'symptomLog', 'phases']) {
-    const have = new Set(current[k].map((x) => x.id));
-    const extra = incoming[k].filter((x) => isObj(x) && x.id != null && !have.has(x.id));
+  for (const k of ['meals', 'foodLog', 'symptomLog', 'phases', 'symptomSets']) {
+    const mine = current[k] || [], theirs = incoming[k] || [];
+    const have = new Set(mine.map((x) => x.id));
+    const extra = theirs.filter((x) => isObj(x) && x.id != null && !have.has(x.id));
     added[k] = extra.length;
-    out[k] = [...current[k], ...extra];
+    out[k] = [...mine, ...extra];
   }
   const customIds = new Set(current.settings.customTags.map((t) => t.id));
   out.settings.customTags = [...current.settings.customTags,
@@ -691,6 +698,28 @@ export function sanitizeDiary(s) {
     return [1, 2, 3].includes(e.severity) ? fixed : null;
   });
 
+  // A set keeps only items that could be logged (one per category, notes
+  // never stored); a set left with none is dropped.
+  const symptomSets = keep(s.symptomSets || [], (set) => {
+    const name = text(set.name, 60).trim();
+    if (!name || !Array.isArray(set.items)) return null;
+    const cats = new Set();
+    const items = [];
+    for (const it of set.items) {
+      if (!isObj(it) || cats.has(it.cat)) continue;
+      const draft = { cat: it.cat, severity: it.severity, consistency: it.consistency, flags: tagList(it.flags) };
+      if (symptomMissing(draft)) continue;
+      cats.add(it.cat);
+      items.push(setItem(draft));
+    }
+    if (!items.length) return null;
+    return {
+      ...set, name, items,
+      useCount: Number.isFinite(set.useCount) && set.useCount > 0 ? Math.floor(set.useCount) : 0,
+      lastUsed: isTs(set.lastUsed) ? set.lastUsed : null,
+    };
+  });
+
   const phases = keep(s.phases, (p) => {
     if (!['eliminate', 'reintroduce'].includes(p.kind) || typeof p.tag !== 'string' || !SAFE_TAG.test(p.tag) || !isTs(p.start)) return null;
     if (p.end != null && (!isTs(p.end) || p.end <= p.start)) return null;
@@ -714,7 +743,7 @@ export function sanitizeDiary(s) {
       ...s,
       babyName: text(s.babyName, 40),
       settings: { ...s.settings, customTags, hiddenTags: tagList(s.settings.hiddenTags) },
-      meals, foodLog, symptomLog, phases,
+      meals, foodLog, symptomLog, symptomSets, phases,
       dismissed: s.dismissed.filter((k) => typeof k === 'string').slice(0, 500),
     },
     skipped,
@@ -749,6 +778,7 @@ export function freshState() {
     meals: [],
     foodLog: [],
     symptomLog: [],
+    symptomSets: [],    // [{ id, name, items: [{ cat, severity, flags, consistency? }], useCount, lastUsed }]: one tap fills the symptom sheet
     phases: [],
     dismissed: [],      // exposure banner keys ("eventId:tag") the parent closed
     lastBackup: null,   // timestamp of the last export
@@ -791,7 +821,7 @@ export function normalizeState(s) {
   for (const k of ['customTags', 'hiddenTags']) {
     if (!Array.isArray(out.settings[k])) out.settings[k] = [];
   }
-  for (const k of ['meals', 'foodLog', 'symptomLog', 'phases', 'dismissed']) {
+  for (const k of ['meals', 'foodLog', 'symptomLog', 'symptomSets', 'phases', 'dismissed']) {
     if (!Array.isArray(out[k])) out[k] = [];
   }
   if (typeof out.babyName !== 'string') out.babyName = '';

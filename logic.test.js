@@ -618,7 +618,7 @@ test('mergeStates adds what is missing and keeps the current copy on a clash', (
   });
   const before = JSON.stringify(current);
   const { state: s, added } = L.mergeStates(current, incoming);
-  assert.deepEqual(added, { meals: 1, foodLog: 1, symptomLog: 1, phases: 0 });
+  assert.deepEqual(added, { meals: 1, foodLog: 1, symptomLog: 1, phases: 0, symptomSets: 0 });
   assert.deepEqual(s.foodLog.map((e) => [e.id, e.tags.join()]), [['f1', 'wheat'], ['f2', 'soy']], 'current f1 wins');
   assert.equal(s.settings.windowHours, 48);
   assert.deepEqual(s.settings.customTags, [{ id: 'sesame', label: 'Sesame' }, { id: 'oats', label: 'Oats' }]);
@@ -627,7 +627,43 @@ test('mergeStates adds what is missing and keeps the current copy on a clash', (
   assert.equal(s.babyName, 'Rowan', 'fills a missing name');
   assert.equal(s.lastBackup, '2026-09-10T10:00');
   assert.equal(JSON.stringify(current), before, 'current diary object untouched');
-  assert.deepEqual(L.mergeStates(s, incoming).added, { meals: 0, foodLog: 0, symptomLog: 0, phases: 0 }, 'merging twice adds nothing');
+  assert.deepEqual(L.mergeStates(s, incoming).added, { meals: 0, foodLog: 0, symptomLog: 0, phases: 0, symptomSets: 0 }, 'merging twice adds nothing');
+});
+
+test('symptom sets: in a fresh state, gained by old saves, merged by id, and sanitized on restore', () => {
+  assert.deepEqual(L.freshState().symptomSets, []);
+  assert.deepEqual(L.normalizeState({ v: 1 }).symptomSets, [], 'a diary saved before sets gains an empty list');
+  const set = (id, name, items, extra = {}) => ({ id, name, items, useCount: 0, lastUsed: null, ...extra });
+  const current = diary({ symptomSets: [set('t1', 'Rough night', [{ cat: 'crying', severity: 2, flags: [] }], { useCount: 4 })] });
+  const incoming = diary({ symptomSets: [
+    set('t1', 'Renamed', [{ cat: 'crying', severity: 3, flags: [] }]),
+    set('t2', 'Morning', [{ cat: 'stool', severity: 2, flags: ['mucus'], consistency: 'loose' }]),
+  ] });
+  const { state: s, added } = L.mergeStates(current, incoming);
+  assert.deepEqual(added, { meals: 0, foodLog: 0, symptomLog: 0, phases: 0, symptomSets: 1 });
+  assert.deepEqual(s.symptomSets.map((x) => [x.id, x.name, x.useCount]), [['t1', 'Rough night', 4], ['t2', 'Morning', 0]], 'the current copy wins');
+  assert.deepEqual(L.mergeStates({ ...current, symptomSets: undefined }, incoming).added.symptomSets, 2, 'a diary without the field still merges');
+
+  assert.deepEqual(L.setItem({ cat: 'stool', consistency: 'loose', flags: ['blood', 'hives'], note: 'x' }),
+    { cat: 'stool', severity: 2, flags: ['blood'], consistency: 'loose' }, 'set items carry no note');
+  const r = L.readBackup(JSON.stringify({ ...L.freshState(), onboarded: true, symptomSets: [
+    set('ok', ' Bad night ', [
+      { cat: 'stool', severity: 9, flags: ['mucus', 'hives', 'x"'], consistency: 'loose', note: 'dropped' },
+      { cat: 'stool', severity: 1, flags: [], consistency: 'hard' },
+      { cat: 'resp', severity: 3, flags: ['blood'] },
+      { cat: 'other', severity: 7 },
+      { cat: 'constructor', severity: 1 },
+    ], { useCount: -2, lastUsed: 'yesterday' }),
+    set('empty', 'Nothing usable', [{ cat: 'stool', consistency: 'formed', flags: [] }]),
+    set('noname', '  ', [{ cat: 'crying', severity: 1, flags: [] }]),
+    { id: 'bad id!', name: 'x', items: [{ cat: 'crying', severity: 1, flags: [] }] },
+  ] }));
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.state.symptomSets, [{
+    id: 'ok', name: 'Bad night', useCount: 0, lastUsed: null,
+    items: [{ cat: 'stool', severity: 2, flags: ['mucus'], consistency: 'loose' }, { cat: 'resp', severity: 3, flags: [] }],
+  }], 'stool severity follows consistency, a second item per category and impossible items go, notes are never kept');
+  assert.equal(r.skipped, 3);
 });
 
 test('backupReminder waits for entries and two weeks, and Later holds it off for a week', () => {

@@ -25,8 +25,14 @@ own files so it works offline; the diary itself lives only in localStorage.
   phase running that day with its day number (tap to open Phases), and the
   day's symptom load and entry count; past days show their own picture.
   `+ food` and `+ symptom` sit on every tab. A saved meal logs in two taps, a
-  loose diaper in four. Tap an entry to edit or delete it; arrows, the date, or
-  a swipe change the day. Every entry's time can be backdated.
+  loose diaper in four. Several symptoms can be picked in one pass: each
+  category expands under the grid, and one Log saves them as separate entries
+  sharing one time (Undo removes them all). After such a pass, **Save as set**
+  keeps it; saved sets sit at the top of the symptom sheet, ordered by use, and
+  one tap fills the sheet in, ready to adjust or log. Press and hold a set to
+  rename, change, or remove it; logged entries never change. Tap an entry to
+  edit or delete it; arrows, the date, or a swipe change the day. Every
+  entry's time can be backdated.
 - **Trends:** daily symptom load with one track per phase food behind the
   line, per-category strips, and the suspects list with its window editable
   inline. Correlation, not diagnosis.
@@ -63,7 +69,7 @@ own files so it works offline; the diary itself lives only in localStorage.
 | File | What it is |
 | --- | --- |
 | `index.html` | The whole app: markup, styles, UI code |
-| `logic.js` | Pure computation shared by the browser and the tests: time and day math, phases, meals and tags, symptom load, suspects, trends ranges, backups (reading, checking, merging), the backup reminder, and which mark a quiet day shows |
+| `logic.js` | Pure computation shared by the browser and the tests: time and day math, phases, meals and tags, symptom load, suspects, trends ranges, backups (reading, checking, merging, including symptom sets), the backup reminder, and which mark a quiet day shows |
 | `logic.test.js` | Tests for `logic.js` |
 | `sw.js` | Cache-first service worker for the app shell |
 | `manifest.json` | PWA manifest |
@@ -98,8 +104,10 @@ then show "A new version is ready" with a Reload button. Releases are tagged.
   `cjmerc39.github.io` share one localStorage and one Cache Storage, so this app
   only touches its own key prefix and its own `food-diary-shell-` caches. Never
   call `localStorage.clear()`; Clear all data removes only `food-diary:` keys.
-- `state.v` is the schema version. Migrations are additive. A build that finds
-  a newer version refuses to open or write the diary rather than guess.
+- `state.v` is the schema version. Migrations are additive (symptom sets, for
+  example, are an extra array; older saves simply gain an empty one). A build
+  that finds a newer version refuses to open or write the diary rather than
+  guess.
 - Unreadable saved data is set aside under `food-diary:state:unreadable:<time>`
   before a fresh diary starts.
 - Backup files carry `"app": "food-diary"`. Restores check every entry (safe
