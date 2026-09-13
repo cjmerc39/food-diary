@@ -405,7 +405,11 @@ export function reintroWatches(state, now) {
 // toward several exposures and several tags eaten together; that is fine for
 // a hint list, and it is why the UI says correlation, not diagnosis.
 export function suspects(state, { from, to, windowHours, now, minWeight = 2 }) {
-  const fromMs = tsMs(from), nowMs = tsMs(now);
+  const nowMs = tsMs(now);
+  // A diary younger than the range has no data before its first entry.
+  // Counting those empty hours would shrink the baseline and inflate ratios.
+  const first = firstEntryDay(state);
+  const fromMs = tsMs(first && `${first}T00:00` > from ? `${first}T00:00` : from);
   // A range may end later than now ("through today"); hours that haven't
   // happened yet would dilute the baseline and inflate every ratio.
   const toMs = Math.min(tsMs(to), nowMs);
@@ -542,6 +546,110 @@ export function mergeStates(current, incoming) {
   if (incoming.lastBackup && (!out.lastBackup || incoming.lastBackup > out.lastBackup)) out.lastBackup = incoming.lastBackup;
   out.onboarded = current.onboarded || incoming.onboarded;
   return { state: out, added };
+}
+
+export const APP_ID = 'food-diary';
+const SAFE_ID = /^[\w-]{1,64}$/;
+const SAFE_TAG = /^[a-z0-9-]{1,40}$/;
+
+// Reads a backup file. Beyond readState's version checks, the file has to be
+// this app's diary (not, say, another app's saved state from the same site),
+// and every entry is checked, so a damaged or hand-edited file can neither
+// crash the app nor put markup on the page. Bad entries are dropped and counted.
+//   { ok: true, state, skipped }  |  { ok: false, reason: 'unreadable' | 'newer' | 'not-diary' }
+export function readBackup(text) {
+  const res = readState(text);
+  if (!res.ok) return res;
+  if (res.fresh) return { ok: false, reason: 'unreadable' };
+  const raw = JSON.parse(text);
+  const isDiary = raw.app === APP_ID || ['meals', 'foodLog', 'symptomLog', 'phases'].every((k) => Array.isArray(raw[k]));
+  if (!isDiary) return { ok: false, reason: 'not-diary' };
+  const { state, skipped } = sanitizeDiary(res.state);
+  delete state.app;
+  return { ok: true, state, skipped };
+}
+
+// Keeps only well-formed entries with safe ids and tags, repairing what can
+// be repaired (missing tag lists, a stool severity that disagrees with its
+// consistency) and dropping the rest, including repeated ids.
+export function sanitizeDiary(s) {
+  let skipped = 0;
+  const text = (v, max = 500) => (typeof v === 'string' ? v.slice(0, max) : '');
+  const tagList = (v) => (Array.isArray(v) ? [...new Set(v.filter((t) => typeof t === 'string' && SAFE_TAG.test(t)))] : []);
+  const keep = (list, fix) => {
+    const seen = new Set();
+    const out = [];
+    for (const item of list) {
+      const fixed = isObj(item) && typeof item.id === 'string' && SAFE_ID.test(item.id) && !seen.has(item.id) ? fix(item) : null;
+      if (fixed) {
+        seen.add(fixed.id);
+        out.push(fixed);
+      } else {
+        skipped++;
+      }
+    }
+    return out;
+  };
+
+  const meals = keep(s.meals, (m) => {
+    const name = text(m.name, 80).trim();
+    if (!name) return null;
+    const tags = tagList(m.tags);
+    return {
+      ...m, name, tags, uncertain: tagList(m.uncertain).filter((t) => !tags.includes(t)),
+      useCount: Number.isFinite(m.useCount) && m.useCount > 0 ? Math.floor(m.useCount) : 0,
+      lastUsed: isTs(m.lastUsed) ? m.lastUsed : null,
+    };
+  });
+
+  const foodLog = keep(s.foodLog, (e) => {
+    if (!isTs(e.ts)) return null;
+    const tags = tagList(e.tags);
+    return {
+      ...e, name: text(e.name, 80).trim() || 'Food', tags, uncertain: tagList(e.uncertain).filter((t) => !tags.includes(t)),
+      mealId: typeof e.mealId === 'string' && SAFE_ID.test(e.mealId) ? e.mealId : null, note: text(e.note),
+    };
+  });
+
+  const symptomLog = keep(s.symptomLog, (e) => {
+    if (!isTs(e.ts) || !SYMPTOM_CATS.includes(e.cat)) return null;
+    const fixed = { ...e, flags: tagList(e.flags).filter((f) => (CAT_FLAGS[e.cat] || []).includes(f)), note: text(e.note) };
+    if (e.cat === 'stool' && Object.hasOwn(STOOL_SEVERITY, e.consistency)) {
+      fixed.severity = STOOL_SEVERITY[e.consistency];
+      return fixed;
+    }
+    delete fixed.consistency;
+    return [1, 2, 3].includes(e.severity) ? fixed : null;
+  });
+
+  const phases = keep(s.phases, (p) => {
+    if (!['eliminate', 'reintroduce'].includes(p.kind) || typeof p.tag !== 'string' || !SAFE_TAG.test(p.tag) || !isTs(p.start)) return null;
+    if (p.end != null && (!isTs(p.end) || p.end <= p.start)) return null;
+    const fixed = { ...p, end: p.end ?? null, note: text(p.note) };
+    if (Array.isArray(p.closes)) fixed.closes = p.closes.filter((id) => typeof id === 'string' && SAFE_ID.test(id));
+    else delete fixed.closes;
+    return fixed;
+  });
+
+  const customIds = new Set();
+  const customTags = [];
+  for (const t of s.settings.customTags) {
+    const ok = isObj(t) && typeof t.id === 'string' && SAFE_TAG.test(t.id) && !customIds.has(t.id) && typeof t.label === 'string' && t.label.trim();
+    if (!ok) { skipped++; continue; }
+    customIds.add(t.id);
+    customTags.push({ id: t.id, label: t.label.trim().slice(0, 30) });
+  }
+
+  return {
+    state: {
+      ...s,
+      babyName: text(s.babyName, 40),
+      settings: { ...s.settings, customTags, hiddenTags: tagList(s.settings.hiddenTags) },
+      meals, foodLog, symptomLog, phases,
+      dismissed: s.dismissed.filter((k) => typeof k === 'string').slice(0, 500),
+    },
+    skipped,
+  };
 }
 
 // ---- display -----------------------------------------------------------------

@@ -135,8 +135,6 @@ svg{display:block;flex:none}
 .date{min-height:48px;padding:0 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--sunk);
   font-size:17px;font-weight:600}
 .date.wide{display:block;width:100%;min-height:52px}
-.soon{margin:18px 4px 8px;padding:12px 14px;border:1.5px dashed var(--line);border-radius:14px;
-  color:var(--ink2);font-size:15px}
 
 .empty{margin:36px 12px;text-align:center;color:var(--ink2)}
 .empty svg{width:56px;height:56px;margin:0 auto 14px;color:var(--ink3)}
@@ -206,9 +204,6 @@ svg{display:block;flex:none}
 .about-head svg{width:26px;height:26px;color:var(--sym)}
 .about h2{font:600 20px/1.3 var(--round)}
 .about .fine{margin-top:10px}
-.list{list-style:none;padding:0 18px}
-.list li{min-height:56px;display:flex;align-items:center;border-bottom:1px solid var(--line);color:var(--ink2)}
-.list li:last-child{border-bottom:0}
 
 /* ---- onboarding and blocked screens ------------------------------------------- */
 .ob-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
@@ -407,7 +402,6 @@ details[open].more-card > summary::after{transform:translateY(2px) rotate(-135de
 .sheet-head h2{font:700 24px/1.2 var(--round)}
 .sheet-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:4px 22px 16px}
 .sheet-body > .sect:first-child{margin-top:4px}
-.sheet-body .soon{margin:4px 0 8px}
 .sheet-foot{flex:none;display:grid;gap:10px;padding:12px 16px 14px;border-top:1px solid var(--line)}
 .sheet-foot:empty{display:none}
 .scrim.top{z-index:2}
@@ -485,7 +479,7 @@ import {
   symptomMissing, symptomFields, dayEntries, exposureBanners, pruneDismissed, reintroWatches,
   standaloneHeight, LOAD_CATS, WINDOW_CHOICES, TREND_RANGES, daysBetween, slugify,
   trendDays, trendSeries, phaseBands, phaseTagSlots, suspects, rangeEntries,
-  addCustomTag, tagInUse, mergeStates,
+  addCustomTag, tagInUse, mergeStates, readBackup, APP_ID,
 } from './logic.js';
 
 // ---- identity ------------------------------------------------------------------
@@ -494,7 +488,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 3;
+const BUILD = 4;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -507,7 +501,6 @@ let blocked = false;   // true when the saved diary must not be written over
 const U = {            // UI-only, never saved
   tab: 'today',
   day: null,           // day key being viewed on Today; null means today
-  fit: null,           // last installed-app height measurement, shown in More
   trendRange: '4w',    // Trends date range
   report: null,        // { preset, from, to } while the report is open
   ob: { step: 0, name: '', picks: {}, lockUntil: 0 },   // onboarding: picks = { tagId: 'YYYY-MM-DD' }
@@ -544,7 +537,6 @@ function fitShell() {
   probe.remove();
   const h = standaloneHeight({ insetTop, screenW: screen.width, screenH: screen.height, innerW: innerWidth, innerH: innerHeight });
   document.documentElement.style.setProperty('--app-h', `${h}px`);
-  U.fit = { insetTop, screen: `${screen.width}x${screen.height}`, window: `${innerWidth}x${innerHeight}`, h };
 }
 
 function newId() {
@@ -699,7 +691,10 @@ function obWelcome() {
     </label>
     <p class="fine">Optional. Only used in the app's wording.</p>
   </div>
-  <div class="ob-foot"><button class="btn btn-primary" data-act="ob-next">Continue</button></div>`;
+  <div class="ob-foot">
+    <button class="btn" data-act="import">Restore from a backup</button>
+    <button class="btn btn-primary" data-act="ob-next">Continue</button>
+  </div>`;
 }
 
 function obEliminating() {
@@ -907,7 +902,7 @@ function entryHtml({ kind, e }) {
       ...(e.tags || []).map((t) => tagChipHtml(t, false)),
       ...(e.uncertain || []).filter((t) => !(e.tags || []).includes(t)).map((t) => tagChipHtml(t, true)),
     ].join('');
-    return `<li><button class="entry food" data-act="edit-food" data-id="${e.id}">
+    return `<li><button class="entry food" data-act="edit-food" data-id="${esc(e.id)}">
       <span class="entry-ico">${ICON.food}</span>
       <span class="entry-main">
         <span class="entry-top"><span class="entry-name">${esc(e.name)}</span>${time}</span>
@@ -919,7 +914,7 @@ function entryHtml({ kind, e }) {
     ? `<span class="pips" role="img" aria-label="Severity ${sev} of 3">${[1, 2, 3].map((n) => `<span class="pip${n <= sev ? ' on' : ''}"></span>`).join('')}</span>`
     : '';
   const flags = (e.flags || []).map((f) => `<span class="flag${f === 'blood' ? ' alert' : ''}">${esc(FLAG_LABELS[f] || f)}</span>`).join('');
-  return `<li><button class="entry symptom" data-act="edit-symptom" data-id="${e.id}">
+  return `<li><button class="entry symptom" data-act="edit-symptom" data-id="${esc(e.id)}">
     <span class="entry-ico">${ICON[e.cat] || ICON.other}</span>
     <span class="entry-main">
       <span class="entry-top"><span class="entry-name">${esc(symptomName(e))}</span>${time}</span>
@@ -1103,7 +1098,7 @@ function loadChartHtml(series, bands, { interactive = false } = {}) {
     const ty = top + t * trackH;
     const color = bandColor(b.tag);
     const back = b.kind === 'reintroduce';
-    const pid = `${id}-${b.tag}`;
+    const pid = `${id}-p${t}`;   // by track, so no tag text ends up in an id
     if (back) {
       patterns.add(`<pattern id="${pid}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">`
         + `<rect width="6" height="6" style="fill:${color};opacity:.08"/><rect width="2" height="6" style="fill:${color};opacity:.45"/></pattern>`);
@@ -1301,7 +1296,7 @@ function phaseCard(p, now) {
   const status = active ? 'Active' : day === 0 ? 'Upcoming' : 'Ended';
   const dates = `${day === 0 ? 'Starts' : 'Since'} ${fmtDate(p.start)}${p.end ? `, ended ${fmtDate(p.end)}` : ''}`;
   return `
-    <button class="card phase" data-act="edit-phase" data-id="${p.id}">
+    <button class="card phase" data-act="edit-phase" data-id="${esc(p.id)}">
       <span class="phase-top"><span class="tagpill${p.kind === 'reintroduce' ? ' sym' : ''}">${esc(label)}</span><span class="status${active ? ' on' : ''}">${status}</span></span>
       <span class="phase-title">${esc(headline)}</span>
       <span class="fine">${esc(dates)}</span>
@@ -1318,8 +1313,7 @@ function viewMore() {
     <section class="card about">
       <div class="about-head">${ICON.lock}<h2>Private by design</h2></div>
       <p>Nothing you log leaves this phone. There's no account, no cloud copy, and no tracking.</p>
-      <p class="fine">Build ${BUILD} · ${isStandalone() ? 'Home Screen app' : 'running in the browser'}${U.fit
-        ? ` · screen ${U.fit.screen}, window ${U.fit.window}, top inset ${U.fit.insetTop}, using ${U.fit.h}` : ''}</p>
+      <p class="fine">Build ${BUILD} · ${isStandalone() ? 'Home Screen app' : 'running in the browser'}</p>
     </section>
     <h3 class="section-label">For the doctor</h3>
     <div class="card rows">${row('open-report', 'Report for your pediatrician', 'Phases, the chart, suspects, and the full log, ready to print or save as a PDF')}</div>
@@ -1371,9 +1365,37 @@ function renderReport() {
   const scroll = $('#report .report-scroll');
   const top = scroll.scrollTop;
   scroll.innerHTML = `${reportControlsHtml()}${reportHtml()}
+    <button class="btn addbtn noprint" data-act="report-share">Share as a file</button>
     <button class="btn btn-primary addbtn noprint" data-act="report-print">Print or save PDF</button>
-    <p class="fine noprint print-hint">In the print preview, tap Share to save a PDF or send it.</p>`;
+    <p class="fine noprint print-hint">In the print preview, tap Share to save a PDF or send it. Share as a file sends a copy you can open and print from Files, Mail, or AirDrop.</p>`;
   scroll.scrollTop = top;
+}
+
+// Home Screen apps have no Safari toolbar, and on some iOS versions
+// window.print() silently does nothing there. If no print starts, say so.
+function printReport() {
+  let started = false;
+  const mark = () => { started = true; };
+  addEventListener('beforeprint', mark, { once: true });
+  window.print();
+  setTimeout(() => {
+    removeEventListener('beforeprint', mark);
+    if (!started) toast("Printing didn't open here. Use Share as a file, then print it from Files or send it.", { ms: 9000 });
+  }, 1500);
+}
+
+// A self-contained copy of the report: page styles included, always the light
+// palette, scrollable anywhere it's opened.
+async function shareReport() {
+  const styles = [...document.querySelectorAll('style')].map((s) => s.textContent).join('\n');
+  const standalone = ':root{color-scheme:light;--bg:#ffffff;--card:#ffffff;--sunk:#f2ede4;--line:#ddd3c7;--ink:#1f1b17;--ink2:#564e45;'
+    + '--ink3:#8a8075;--sym:#34766f;--danger:#a33b2c;--band-0:#2a78d6;--band-1:#eb6834;--band-2:#1baf7a;--band-3:#eda100;'
+    + '--band-4:#e87ba4;--band-5:#008300;--band-6:#4a3aa7;--band-7:#e34948}'
+    + 'body{height:auto!important;overflow:visible!important;display:block!important;padding:16px}.report{border:0;padding:0}';
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">`
+    + `<title>${esc(APP_NAME)} report</title><style>${styles}\n${standalone}</style></head><body>${reportHtml()}</body></html>`;
+  const name = `${slugify(APP_NAME)}-report-${U.report.to}.html`;
+  await shareFile(new File([html], name, { type: 'text/html' }), `${APP_NAME} report`);
 }
 
 function reportControlsHtml() {
@@ -1464,29 +1486,37 @@ function reportHtml() {
 
 // ---- backups -----------------------------------------------------------------------------
 // localStorage is the only copy of the diary, so a JSON file is the lifeboat.
-// On iPhone the share sheet saves it to Files or sends it anywhere.
-async function exportBackup() {
-  const name = `${slugify(APP_NAME)}-backup-${todayKey()}.json`;
-  const file = new File([JSON.stringify(S, null, 2)], name, { type: 'application/json' });
-  try {
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title: `${APP_NAME} backup` });
-    } else {
-      const url = URL.createObjectURL(file);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = name;
-      document.body.append(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
+
+// Hands a file to the share sheet (Files, Mail, AirDrop), or downloads it where
+// there's no share sheet or sharing fails. Resolves false only if the parent
+// closed the share sheet.
+async function shareFile(file, title) {
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title });
+      return true;
+    } catch (err) {
+      if (err && err.name === 'AbortError') return false;
     }
-  } catch (err) {
-    if (err && err.name === 'AbortError') return;   // the share sheet was closed
-    toast("Couldn't create the backup file. Please try again.", { ms: 6000 });
-    return;
   }
-  S.lastBackup = nowTs();
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = file.name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+  return true;
+}
+
+async function exportBackup() {
+  const stamp = nowTs();
+  const name = `${slugify(APP_NAME)}-backup-${stamp.slice(0, 10)}.json`;
+  // The file carries its own backup time and says which app wrote it.
+  const file = new File([JSON.stringify({ app: APP_ID, ...S, lastBackup: stamp }, null, 2)], name, { type: 'application/json' });
+  if (!(await shareFile(file, `${APP_NAME} backup`))) return;
+  S.lastBackup = stamp;
   save();
   render();
   toast(`Backup saved as ${name}.`);
@@ -1500,27 +1530,36 @@ async function importBackup(file) {
     toast("Couldn't read that file.", { ms: 6000 });
     return;
   }
-  const res = readState(text);
-  if (!res.ok && res.reason === 'newer') {
-    toast('That backup is from a newer version of the app. Close the app completely and reopen it to update, then try again.', { ms: 9000 });
+  const res = readBackup(text);
+  if (!res.ok) {
+    toast(res.reason === 'newer'
+      ? 'That backup is from a newer version of the app. Close the app completely and reopen it to update, then try again.'
+      : `That file isn't a ${APP_NAME} backup.`, { ms: 9000 });
     return;
   }
-  if (!res.ok || res.fresh) {
-    toast(`That file isn't a ${APP_NAME} backup.`, { ms: 6000 });
-    return;
+  openImportSheet(res.state, file.name, res.skipped);
+}
+
+// After a restore, land wherever the diary now belongs: the app, or setup.
+function showDiary() {
+  if (S.onboarded) {
+    showApp();
+  } else {
+    U.ob = { step: 0, name: '', picks: {}, lockUntil: 0 };
+    showOnboarding();
   }
-  openImportSheet(res.state, file.name);
 }
 
 const diaryCounts = (s) => [plural(s.foodLog.length, 'food entry', 'food entries'), plural(s.symptomLog.length, 'symptom'),
   plural(s.phases.length, 'phase'), plural(s.meals.length, 'saved meal')].join(', ');
 
-function openImportSheet(incoming, fileName) {
+function openImportSheet(incoming, fileName, skipped = 0) {
   const merged = mergeStates(S, incoming);
   const adding = Object.values(merged.added).reduce((a, b) => a + b, 0);
   openSheet({
     title: 'Restore from a backup',
     body: `<p class="lede">${esc(fileName)}</p>
+      ${skipped ? `<p class="caution" role="note">${ICON.alert}<span>${plural(skipped, 'damaged entry', 'damaged entries')} in this file will be left out.</span></p>` : ''}
       <div class="card inset"><span class="sect-label">In the backup</span><p>${esc(diaryCounts(incoming))}</p></div>
       <div class="card inset"><span class="sect-label">On this phone now</span><p>${esc(diaryCounts(S))}</p></div>
       <div class="sect opts">
@@ -1535,9 +1574,9 @@ function openImportSheet(incoming, fileName) {
         S = merged.state;
         save();
         closeSheet();
-        render();
+        showDiary();
         toast(adding ? `Merged: ${plural(adding, 'item')} added.` : 'Nothing new to add.', {
-          ms: 8000, actions: adding ? [{ label: 'Undo', fn: () => { S = previous; save(); render(); } }] : [],
+          ms: 8000, actions: adding ? [{ label: 'Undo', fn: () => { S = previous; save(); showDiary(); } }] : [],
         });
       },
       'import-replace': async () => {
@@ -1552,10 +1591,9 @@ function openImportSheet(incoming, fileName) {
         U.day = null;
         save();
         closeSheet();
-        if (S.onboarded) showApp();
-        else showOnboarding();
+        showDiary();
         toast('Diary replaced from the backup.', {
-          ms: 9000, actions: [{ label: 'Undo', fn: () => { S = previous; save(); showApp(); } }],
+          ms: 9000, actions: [{ label: 'Undo', fn: () => { S = previous; save(); showDiary(); } }],
         });
       },
     },
@@ -1593,11 +1631,11 @@ function openTagsSheet() {
   // Your own tags get a trailing delete column (a spacer when a tag is in use),
   // so the switches in each section line up.
   const tagRow = (t, custom) => `<div class="tagrow">
-      <button class="switchrow" data-act="tag-shown" data-tag="${t.id}" role="switch" aria-checked="${!t.hidden}">
+      <button class="switchrow" data-act="tag-shown" data-tag="${esc(t.id)}" role="switch" aria-checked="${!t.hidden}">
         <span>${esc(t.label)}</span><span class="switch" aria-hidden="true"></span></button>
       ${!custom ? '' : tagInUse(S, t.id)
         ? '<span class="iconbtn-space" aria-hidden="true"></span>'
-        : `<button class="iconbtn" data-act="tag-delete" data-tag="${t.id}" aria-label="Delete ${esc(t.label)}">${ICON.trash}</button>`}
+        : `<button class="iconbtn" data-act="tag-delete" data-tag="${esc(t.id)}" aria-label="Delete ${esc(t.label)}">${ICON.trash}</button>`}
     </div>`;
   const listHtml = () => {
     const tags = allTags(S.settings);
@@ -1658,6 +1696,7 @@ function openTagsSheet() {
 }
 
 async function clearAllData() {
+  hideToast();   // an Undo left over from earlier must not write old data into the fresh diary
   const first = await confirmDialog({
     title: 'Clear all data?',
     body: `This deletes every entry, saved meal, phase, and setting in ${APP_NAME} on this phone. Back up first if you might want any of it.`,
@@ -1878,7 +1917,7 @@ function tagPickerHtml(d) {
   const shown = allTags(S.settings).filter((t) => !t.hidden || tagState(d, t.id) !== 'off');
   const chips = shown.map((t) => {
     const st = tagState(d, t.id);
-    return `<button class="chip" data-act="tag" data-tag="${t.id}" aria-pressed="${st === 'on' ? 'true' : st === 'maybe' ? 'mixed' : 'false'}">${esc(t.label)}</button>`;
+    return `<button class="chip" data-act="tag" data-tag="${esc(t.id)}" aria-pressed="${st === 'on' ? 'true' : st === 'maybe' ? 'mixed' : 'false'}">${esc(t.label)}</button>`;
   }).join('');
   return `<div class="chips tagpick">${chips}</div>
     <p class="hint">Tap once if it's in the meal. Tap again for possibly hidden, like takeout or packaged food.</p>`;
@@ -1962,7 +2001,7 @@ function foodPickFoot(d) {
 
 function mealChipHtml(m) {
   const tags = mealTagsText(m);
-  return `<button class="meal-chip" data-act="meal-log" data-hold="meal-edit" data-id="${m.id}">
+  return `<button class="meal-chip" data-act="meal-log" data-hold="meal-edit" data-id="${esc(m.id)}">
     <span class="mc-name">${esc(m.name)}</span>${tags ? `<span class="mc-tags">${esc(tags)}</span>` : ''}</button>`;
 }
 
@@ -2362,7 +2401,7 @@ function phaseBody(d, p) {
       <p class="hint">${d.kind === 'eliminate' ? 'Taking a food out of your diet.' : 'Bringing one food back. Watch 48 to 72 hours after each try before changing anything else.'}</p>
     </div>
     <div class="sect"><span class="sect-label">Food</span>
-      <div class="chips">${tags.map((t) => `<button class="chip" data-act="ptag" data-tag="${t.id}" aria-pressed="${d.tag === t.id}">${esc(t.label)}</button>`).join('')}</div>
+      <div class="chips">${tags.map((t) => `<button class="chip" data-act="ptag" data-tag="${esc(t.id)}" aria-pressed="${d.tag === t.id}">${esc(t.label)}</button>`).join('')}</div>
       <div data-region="closing">${closingHtml(d, p)}</div>
     </div>
     <label class="sect"><span class="sect-label">Started</span><input class="date wide" type="date" data-field="start" value="${d.start}"></label>
@@ -2437,6 +2476,7 @@ async function deletePhase(p) {
 let dialog = null;
 
 function confirmDialog({ title, body = '', ok = 'OK', cancel = 'Cancel', danger = false, lockMs = 0 }) {
+  if (performance.now() >= errorUntil) hideToast();   // no stray Undo above a question
   return new Promise((resolve) => {
     const scrim = document.createElement('div');
     scrim.className = 'scrim top';
@@ -2561,7 +2601,8 @@ const ACTIONS = {
   window: (el) => { S.settings.windowHours = +el.dataset.hours; save(); render(); },
   'open-report': () => showReport(),
   'report-close': () => { showScreen('app'); render(); },
-  'report-print': () => window.print(),
+  'report-print': () => printReport(),
+  'report-share': () => shareReport(),
   'report-range': (el) => {
     const { fromDay, toDay } = trendDays(S, el.dataset.range, todayKey());
     U.report = { preset: el.dataset.range, from: fromDay, to: toDay };

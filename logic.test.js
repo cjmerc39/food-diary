@@ -361,16 +361,18 @@ test('suspects: overlapping windows share events, ranked by ratio to baseline', 
       sym('s2', '2026-09-06T12:00', 'crying', 1),                                // in both soy windows
     ],
   }), RANGE);
+  // The diary begins Sep 3, so the baseline covers Sep 3 to Sep 8: 120 hours.
   assert.equal(r.totalPoints, 3);
-  assert.ok(near(r.baseline, (3 / 168) * 24));
+  assert.equal(r.hours, 120);
+  assert.ok(near(r.baseline, (3 / 120) * 24));
   assert.deepEqual(r.ranked.map((x) => x.tag), ['dairy', 'soy']);
   const [dairy, soy] = r.ranked;
   assert.equal(dairy.followed, 2);
   assert.equal(dairy.complete, 2);
   assert.equal(dairy.meanAfter, 2);
-  assert.ok(near(dairy.ratio, 2 / ((3 / 168) * 24)));
+  assert.ok(near(dairy.ratio, 2 / ((3 / 120) * 24)));
   assert.equal(soy.meanAfter, 1);
-  assert.ok(near(soy.ratio, 1 / ((3 / 168) * 24)));
+  assert.ok(near(soy.ratio, 1 / ((3 / 120) * 24)));
 });
 
 test('suspects: possibly-hidden exposures count at half weight', () => {
@@ -390,7 +392,7 @@ test('suspects: possibly-hidden exposures count at half weight', () => {
   assert.equal(egg.possible, 1);
   assert.equal(egg.followed, 1);
   assert.ok(near(egg.meanAfter, 3 / 2.5));
-  assert.ok(near(egg.ratio, (3 / 2.5) / ((3 / 168) * 24)));
+  assert.ok(near(egg.ratio, (3 / 2.5) / ((3 / 144) * 24)), 'the diary begins Sep 2: 144 hours');
   assert.deepEqual(r.notEnough.map((x) => [x.tag, x.weight]), [['citrus', 1]], 'two possible exposures weigh 1');
 });
 
@@ -412,10 +414,20 @@ test('suspects: flag points count, and open windows are watched, not scored', ()
 });
 
 test('suspects: a range ending after now counts only the hours that have happened', () => {
-  const r = L.suspects(diary({ symptomLog: [sym('s1', '2026-09-05T12:00', 'crying', 2)] }),
+  const r = L.suspects(diary({ symptomLog: [sym('s0', '2026-09-01T06:00', 'crying', 1), sym('s1', '2026-09-05T12:00', 'crying', 2)] }),
     { from: '2026-09-01T00:00', to: '2026-09-14T00:00', windowHours: 24, now: '2026-09-08T00:00' });
   assert.equal(r.hours, 168);
-  assert.ok(near(r.baseline, (2 / 168) * 24));
+  assert.ok(near(r.baseline, (3 / 168) * 24));
+});
+
+test('suspects: a diary younger than the range only counts hours since its first entry', () => {
+  const s = diary({
+    foodLog: [food('d1', '2026-09-06T08:00', ['dairy']), food('d2', '2026-09-08T08:00', ['dairy'])],
+    symptomLog: [sym('s1', '2026-09-06T12:00', 'crying', 2), sym('s2', '2026-09-08T12:00', 'crying', 2)],
+  });
+  const r = L.suspects(s, { from: '2026-08-17T00:00', to: '2026-09-13T12:00', windowHours: 24, now: '2026-09-13T12:00' });
+  assert.equal(r.hours, 180, 'Sep 6 00:00 to Sep 13 12:00, not four weeks');
+  assert.ok(near(r.ranked[0].ratio, 2 / ((4 / 180) * 24)));
 });
 
 test('suspects: no symptoms in range leaves the ratio empty instead of dividing by zero', () => {
@@ -544,6 +556,54 @@ test('mergeStates adds what is missing and keeps the current copy on a clash', (
   assert.equal(s.lastBackup, '2026-09-10T10:00');
   assert.equal(JSON.stringify(current), before, 'current diary object untouched');
   assert.deepEqual(L.mergeStates(s, incoming).added, { meals: 0, foodLog: 0, symptomLog: 0, phases: 0 }, 'merging twice adds nothing');
+});
+
+test('readBackup refuses files that are not this app\'s diary', () => {
+  assert.deepEqual(L.readBackup('{"hello":"world"}'), { ok: false, reason: 'unreadable' });
+  assert.deepEqual(L.readBackup(''), { ok: false, reason: 'unreadable' });
+  assert.deepEqual(L.readBackup(JSON.stringify({ v: 1, bottles: [], recipes: [] })), { ok: false, reason: 'not-diary' },
+    "another app's saved state from the same site");
+  assert.equal(L.readBackup(JSON.stringify({ v: 9, app: 'food-diary' })).reason, 'newer');
+  const marked = L.readBackup(JSON.stringify({ v: 1, app: 'food-diary' }));
+  assert.equal(marked.ok, true);
+  assert.equal('app' in marked.state, false, 'the marker is not kept in the diary');
+  assert.equal(L.readBackup(JSON.stringify({ ...L.freshState(), onboarded: true })).ok, true, 'exports from before the marker still restore');
+});
+
+test('readBackup drops damaged or unsafe entries and counts them', () => {
+  const file = {
+    ...L.freshState(),
+    onboarded: true,
+    settings: { windowHours: 24, customTags: [{ id: 'sesame', label: 'Sesame' }, { id: 'bad tag', label: 'x' }, { id: 'nolabel' }], hiddenTags: ['corn', '<b>'] },
+    meals: [{ id: 'm1', name: 'Toast' }, { id: 'm2', tags: ['wheat'] }],
+    foodLog: [
+      food('f1', '2026-09-12T08:00', ['dairy', 'x"><img>'], ['dairy', 'soy']),
+      food('f1', '2026-09-12T09:00', ['egg']),
+      { id: '"><img src=x onerror=alert(1)>', ts: '2026-09-12T08:00', name: 'Evil', tags: [] },
+      { id: 'f3', ts: 'yesterday', name: 'No time', tags: [] },
+    ],
+    symptomLog: [
+      sym('s1', '2026-09-12T10:00', 'stool', 9, ['blood', 'hives'], { consistency: 'loose' }),
+      sym('s2', '2026-09-12T10:00', 'constructor', 2),
+      sym('s3', '2026-09-12T10:00', 'stool', 2, [], { consistency: 'constructor' }),
+      sym('s4', '2026-09-12T10:00', 'crying', 7),
+    ],
+    phases: [
+      { ...phase('2026-09-01T00:00'), id: 'p1' },
+      { ...phase('2026-09-02T00:00', 'soon'), id: 'p2' },
+      { ...phase('2026-09-03T00:00', null, { tag: 'Dairy Stuff' }), id: 'p3' },
+    ],
+  };
+  const r = L.readBackup(JSON.stringify(file));
+  assert.equal(r.ok, true);
+  const s = r.state;
+  assert.deepEqual(s.meals.map((m) => [m.id, m.tags, m.uncertain]), [['m1', [], []]], 'missing tag lists repaired, nameless meal dropped');
+  assert.deepEqual(s.foodLog.map((e) => [e.id, e.tags.join(), e.uncertain.join()]), [['f1', 'dairy', 'soy']]);
+  assert.deepEqual(s.symptomLog.map((e) => [e.id, e.severity, e.flags.join(), e.consistency]), [['s1', 2, 'blood', 'loose'], ['s3', 2, '', undefined]]);
+  assert.deepEqual(s.phases.map((p) => p.id), ['p1']);
+  assert.deepEqual(s.settings.customTags, [{ id: 'sesame', label: 'Sesame' }]);
+  assert.deepEqual(s.settings.hiddenTags, ['corn']);
+  assert.equal(r.skipped, 1 + 3 + 2 + 2 + 2);
 });
 
 // ---- state -------------------------------------------------------------------
