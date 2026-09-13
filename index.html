@@ -164,6 +164,29 @@ svg{display:block;flex:none}
 .nudge .btn{min-height:48px;font-size:17px}
 .nudge .btn:not(.btn-primary){background:var(--card)}
 
+/* The day fills at least the scroller, so its leftover space can hold the mark. */
+.dayview{min-height:100%;display:flex;flex-direction:column}
+.glance{margin-bottom:12px}
+.glance-name{font:700 22px/1.2 var(--round)}
+.glance-phases{margin-top:6px}
+/* One line per phase on a shared baseline: small "Day", big number, phase name. */
+.glance-phase{display:flex;align-items:baseline;gap:12px;width:100%;min-height:56px;padding:8px 0;border-bottom:1px solid var(--line);text-align:left}
+.glance-phase:last-child{border-bottom:0}
+.glance-phase:active{opacity:.7}
+.glance-day{flex:none;min-width:76px;display:flex;align-items:baseline;gap:5px}
+.glance-day-label{color:var(--ink2);font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.glance-day-num{font:700 30px/1.1 var(--round)}
+.glance-what{flex:1;min-width:0;font-size:17px}
+.glance-phase > svg{align-self:center;width:20px;height:20px;color:var(--ink3)}
+.glance-stats{display:grid;grid-template-columns:1fr 1.4fr;gap:12px;margin-top:10px;padding-top:12px;border-top:1px solid var(--line)}
+.glance-num{display:block;font:700 26px/1.1 var(--round)}
+.glance-label{display:block;margin-top:2px;color:var(--ink2);font-size:14px}
+.day-rest{flex:1 1 0;min-height:0;overflow:hidden;container-type:size;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:14px;text-align:center}
+.day-rest.empty{min-height:56px}
+.day-rest p{color:var(--ink2);font-size:17px}
+.day-mark{width:56px;height:52px;opacity:.8}
+@container (max-height: 120px){.day-mark{display:none}}
 .timeline{list-style:none;display:grid;gap:10px}
 .entry{display:flex;align-items:flex-start;gap:12px;width:100%;padding:12px 14px;border-radius:18px;
   background:var(--card);border:1px solid var(--line);text-align:left}
@@ -487,7 +510,7 @@ import {
   symptomMissing, symptomFields, dayEntries, exposureBanners, pruneDismissed, reintroWatches,
   standaloneHeight, LOAD_CATS, WINDOW_CHOICES, TREND_RANGES, daysBetween, slugify,
   trendDays, trendSeries, phaseBands, phaseTagSlots, suspects, rangeEntries,
-  addCustomTag, tagInUse, mergeStates, readBackup, APP_ID, backupReminder,
+  addCustomTag, tagInUse, mergeStates, readBackup, APP_ID, backupReminder, dayGlance,
 } from './logic.js';
 
 // ---- identity ------------------------------------------------------------------
@@ -496,7 +519,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 5;
+const BUILD = 6;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -851,16 +874,47 @@ function dayHeadHtml() {
     </div>`;
 }
 
+// The app's mark, drawn inline in the palette for the quiet space under a day.
+const DAY_MARK = '<svg class="day-mark" viewBox="16 17 68 64" aria-hidden="true">'
+  + '<path d="M50 20L56.9 32.8A7.8 7.8 0 1 1 43.1 32.8Z" style="fill:var(--sym)"/>'
+  + '<rect x="19" y="51.5" width="62" height="7" rx="3.5" style="fill:var(--food)"/>'
+  + '<path d="M22.5 55A27.5 23.5 0 0 0 77.5 55Z" style="fill:var(--food)"/></svg>';
+
 function viewToday() {
   const day = viewDay(), today = todayKey();
   const cards = day === today ? todayCardsHtml(nowTs()) : '';
   const rows = dayEntries(S, day);
-  const list = rows.length
-    ? `<ul class="timeline">${rows.map(entryHtml).join('')}</ul>`
-    : day === today
-      ? empty('food', 'Nothing logged yet today', 'Tap <b>+ food</b> or <b>+ symptom</b> below. Catching up later is fine: every entry can be backdated.')
-      : empty('food', `Nothing logged on ${fmtDate(`${day}T00:00`, { weekday: true })}`, 'Tap <b>+ food</b> or <b>+ symptom</b> to add something for this day.');
-  return `<div class="dayview">${cards}${list}</div>`;
+  const list = rows.length ? `<ul class="timeline">${rows.map(entryHtml).join('')}</ul>` : '';
+  // The leftover space under the day: the mark and one line on an empty day,
+  // the mark alone on a sparse one, nothing once the entries fill the screen
+  // (the space collapses and a container query hides the mark).
+  const rest = rows.length
+    ? `<div class="day-rest" aria-hidden="true">${DAY_MARK}</div>`
+    : `<div class="day-rest empty">${DAY_MARK}<p>${day === today
+      ? 'Nothing logged yet today'
+      : `Nothing logged on ${esc(fmtDate(`${day}T00:00`, { weekday: true }))}`}</p></div>`;
+  return `<div class="dayview">${glanceHtml(day)}${cards}${list}${rest}</div>`;
+}
+
+// A calm summary at the top of each day: who, what's running, and the day's
+// numbers. No streaks, no scores to beat. Past days show that day's picture.
+function glanceHtml(day) {
+  const g = dayGlance(S, day);
+  const phases = g.phases.map(({ phase, day: n }) => {
+    const what = `${tagLabel(S.settings, phase.tag).toLowerCase()} ${phase.kind === 'reintroduce' ? 'reintroduction' : 'elimination'}`;
+    return `<button class="glance-phase" data-act="tab" data-tab="phases" aria-label="${esc(`Day ${n} · ${what}. Opens Phases.`)}">
+      <span class="glance-day" aria-hidden="true"><span class="glance-day-label">Day</span><span class="glance-day-num">${n}</span></span>
+      <span class="glance-what" aria-hidden="true">${esc(what)}</span>${ICON.right}</button>`;
+  }).join('');
+  const detail = g.entries ? ` · ${g.food} food, ${plural(g.symptoms, 'symptom')}` : '';
+  return `<section class="card glance" aria-label="${day === todayKey() ? 'Today at a glance' : 'This day at a glance'}">
+    <h2 class="glance-name">${esc(S.babyName.trim() || 'Your baby')}</h2>
+    ${phases ? `<div class="glance-phases">${phases}</div>` : ''}
+    <div class="glance-stats">
+      <p class="glance-stat"><span class="glance-num">${g.load}</span><span class="glance-label">symptom load</span></p>
+      <p class="glance-stat"><span class="glance-num">${g.entries}</span><span class="glance-label">${g.entries === 1 ? 'entry' : 'entries'}${detail}</span></p>
+    </div>
+  </section>`;
 }
 
 function pageDay(delta) {

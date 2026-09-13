@@ -325,6 +325,26 @@ export function dayEntries(state, day) {
   return rows.sort((a, b) => (a.e.ts < b.e.ts ? 1 : a.e.ts > b.e.ts ? -1 : 0));
 }
 
+// Phases running on a local day, each with the day number it had reached then,
+// in the Phases tab's order. A phase is off on its end day.
+export function phasesOnDay(phases, day) {
+  const running = phases.filter((p) => isTs(p.start) && dayKey(p.start) <= day && (p.end == null || dayKey(p.end) > day));
+  return sortPhases(running, `${day}T12:00`).map((phase) => ({ phase, day: daysBetween(dayKey(phase.start), day) + 1 }));
+}
+
+// The numbers on a day's glance card.
+export function dayGlance(state, day) {
+  const entries = dayEntries(state, day);
+  const food = entries.filter((r) => r.kind === 'food').length;
+  return {
+    load: dayLoad(state.symptomLog, day).load,
+    entries: entries.length,
+    food,
+    symptoms: entries.length - food,
+    phases: phasesOnDay(state.phases, day),
+  };
+}
+
 // Every food event carrying the tag, oldest first. Possibly-hidden counts half.
 export function exposuresOf(foodLog, tag) {
   const out = [];

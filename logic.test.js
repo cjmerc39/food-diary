@@ -267,6 +267,35 @@ test('dayEntries interleaves one day, newest first', () => {
   assert.deepEqual(L.dayEntries(diary(), '2026-09-13'), []);
 });
 
+test('phasesOnDay lists what was running that day with its day number then', () => {
+  const phases = [
+    { ...phase('2026-08-20T00:00'), id: 'dairy' },
+    { ...phase('2026-08-27T00:00', '2026-09-10T00:00', { tag: 'soy' }), id: 'soy' },
+    { ...phase('2026-09-10T00:00', null, { kind: 'reintroduce', tag: 'egg' }), id: 'egg' },
+    { ...phase('2026-09-20T00:00', null, { tag: 'corn' }), id: 'corn' },
+  ];
+  assert.deepEqual(L.phasesOnDay(phases, '2026-09-09').map((x) => [x.phase.id, x.day]), [['soy', 14], ['dairy', 21]]);
+  assert.deepEqual(L.phasesOnDay(phases, '2026-09-10').map((x) => [x.phase.id, x.day]), [['egg', 1], ['dairy', 22]],
+    'soy is off on its end day; egg starts');
+  assert.deepEqual(L.phasesOnDay(phases, '2026-08-19'), []);
+  assert.deepEqual(L.phasesOnDay([{ ...phase('2026-03-01T00:00'), id: 'p' }], '2026-03-15').map((x) => x.day), [15], 'spans DST');
+});
+
+test('dayGlance counts a day\'s entries and load', () => {
+  const s = diary({
+    phases: [{ ...phase('2026-09-01T00:00'), id: 'p1' }],
+    foodLog: [food('f1', '2026-09-12T08:00', ['wheat']), food('f2', '2026-09-12T19:00'), food('f3', '2026-09-11T19:00')],
+    symptomLog: [
+      sym('s1', '2026-09-12T10:00', 'stool', 2, ['blood'], { consistency: 'loose' }),
+      sym('s2', '2026-09-12T22:00', 'crying', 1),
+    ],
+  });
+  const g = L.dayGlance(s, '2026-09-12');
+  assert.deepEqual({ ...g, phases: g.phases.map((x) => [x.phase.id, x.day]) },
+    { load: 5, entries: 4, food: 2, symptoms: 2, phases: [['p1', 12]] });
+  assert.deepEqual(L.dayGlance(diary(), '2026-09-12'), { load: 0, entries: 0, food: 0, symptoms: 0, phases: [] });
+});
+
 test('exposure banners: eaten during an elimination, last 72 hours, one per exposure', () => {
   const now = '2026-09-13T12:00';
   const s = diary({

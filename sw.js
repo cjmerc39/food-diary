@@ -3,7 +3,7 @@
    anything outside SHELL. Bump VERSION on every deploy, together with BUILD in
    index.html; the page then offers "Reload" and old caches get deleted. */
 const PREFIX = 'food-diary-shell-';
-const VERSION = 5;
+const VERSION = 6;
 const CACHE = PREFIX + VERSION;
 const SHELL = ['./', 'index.html', 'logic.js', 'manifest.json', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 

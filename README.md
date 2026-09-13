@@ -21,9 +21,12 @@ own files so it works offline; the diary itself lives only in localStorage.
 
 ## Using it
 
-- **Today:** `+ food` and `+ symptom` sit on every tab. A saved meal logs in
-  two taps, a loose diaper in four. Tap an entry to edit or delete it; arrows,
-  the date, or a swipe change the day. Every entry's time can be backdated.
+- **Today:** a glance card at the top of each day shows the baby's name, each
+  phase running that day with its day number (tap to open Phases), and the
+  day's symptom load and entry count; past days show their own picture.
+  `+ food` and `+ symptom` sit on every tab. A saved meal logs in two taps, a
+  loose diaper in four. Tap an entry to edit or delete it; arrows, the date, or
+  a swipe change the day. Every entry's time can be backdated.
 - **Trends:** daily symptom load with one track per phase food behind the
   line, per-category strips, and the suspects list with its window editable
   inline. Correlation, not diagnosis.
