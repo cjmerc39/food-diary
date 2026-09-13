@@ -626,7 +626,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 11;
+const BUILD = 12;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -2573,8 +2573,7 @@ function symptomPickActions(d, refresh, { single = false } = {}) {
         d.order.push(c);
         d.items[c] = blankItem();
       }
-      refresh();
-      if (!single && d.items[c]) revealInSheet(`[data-symset="${c}"] .opts, [data-symset="${c}"] .textarea`);
+      refresh();   // no scrolling: the parent may still be picking categories
     },
     sev: (b) => { d.items[b.dataset.cat].severity = +b.dataset.sev; refresh(); },
     stool: (b) => { d.items[b.dataset.cat].consistency = b.dataset.stool; refresh(); },
