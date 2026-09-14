@@ -508,6 +508,84 @@ test('suspects: no symptoms in range leaves the ratio empty instead of dividing 
   assert.equal(r.ranked[0].meanAfter, 0);
 });
 
+// ---- two pathways: through breast milk, and the baby's own food ---------------
+
+test('who: missing means the parent, and only baby means baby', () => {
+  assert.equal(L.eventWho(food('f1', '2026-09-02T08:00')), 'parent');
+  assert.equal(L.eventWho({ ...food('f1', '2026-09-02T08:00'), who: 'baby' }), 'baby');
+  assert.equal(L.eventWho({ ...food('f1', '2026-09-02T08:00'), who: 'dog' }), 'parent');
+  assert.equal(L.hasBabyFood(diary({ foodLog: [food('f1', '2026-09-02T08:00')] })), false);
+  assert.equal(L.hasBabyFood(diary({ foodLog: [{ ...food('f1', '2026-09-02T08:00'), who: 'baby' }] })), true);
+  assert.equal(L.freshState().settings.directWindowHours, 4);
+  assert.equal(L.normalizeState({ v: 1 }).settings.directWindowHours, 4, 'a diary from before solids gains the default');
+  assert.equal(L.normalizeState({ v: 1, settings: { directWindowHours: 3 } }).settings.directWindowHours, 4, 'off-list values fall back');
+  assert.equal(L.normalizeState({ v: 1, settings: { directWindowHours: 8 } }).settings.directWindowHours, 8);
+  const restored = L.readBackup(JSON.stringify({ ...L.freshState(), onboarded: true, foodLog: [
+    food('old', '2026-09-02T08:00', ['dairy']),
+    { ...food('b', '2026-09-02T09:00', ['dairy']), who: 'baby' },
+    { ...food('odd', '2026-09-02T10:00', ['dairy']), who: 'grandma' },
+  ] })).state.foodLog;
+  assert.deepEqual(restored.map((e) => [e.id, e.who]), [['old', 'parent'], ['b', 'baby'], ['odd', 'parent']], 'old backups restore with who defaulted');
+});
+
+test('exposures, banners, and watches say who ate the food', () => {
+  const now = '2026-09-13T12:00';
+  const s = diary({
+    phases: [phase('2026-09-01T00:00'), phase('2026-09-10T00:00', null, { kind: 'reintroduce', tag: 'egg' })],
+    foodLog: [
+      food('p1', '2026-09-13T08:00', ['dairy']),
+      { ...food('b1', '2026-09-13T09:00', ['dairy']), who: 'baby' },
+      { ...food('b2', '2026-09-12T09:00', ['egg']), who: 'baby' },
+      food('p2', '2026-09-11T09:00', ['egg']),
+    ],
+    symptomLog: [sym('s1', '2026-09-12T11:00', 'skin', 2, ['hives'])],
+  });
+  assert.deepEqual(L.exposuresOf(s.foodLog, 'dairy').map((x) => [x.event.id, x.who]), [['p1', 'parent'], ['b1', 'baby']]);
+  assert.deepEqual(L.exposuresOf(s.foodLog, 'dairy', 'baby').map((x) => x.event.id), ['b1']);
+  assert.deepEqual(L.exposuresOf(s.foodLog, 'dairy', 'parent').map((x) => x.event.id), ['p1']);
+  assert.deepEqual(L.exposureBanners(s, now).map((b) => [b.key, b.who]), [['b1:dairy', 'baby'], ['p1:dairy', 'parent']],
+    "the baby eating an eliminated food raises a banner too, labeled");
+  const [w] = L.reintroWatches(s, now);
+  assert.deepEqual(w.exposures.map((x) => [x.eventId, x.who, x.points]), [['b2', 'baby', 4], ['p2', 'parent', 4]]);
+});
+
+test('suspects by pathway: each uses its own window and only its own exposures', () => {
+  const s = diary({
+    settings: { windowHours: 24, directWindowHours: 4, customTags: [], hiddenTags: [] },
+    foodLog: [
+      food('p1', '2026-09-02T08:00', ['dairy']),
+      food('p2', '2026-09-04T08:00', ['dairy']),
+      { ...food('b1', '2026-09-03T12:00', ['dairy']), who: 'baby' },
+      { ...food('b2', '2026-09-05T12:00', ['dairy']), who: 'baby' },
+      { ...food('b3', '2026-09-06T12:00', ['egg']), who: 'baby' },   // only the baby ever ate egg
+    ],
+    symptomLog: [
+      sym('s1', '2026-09-02T18:00', 'crying', 2),   // 10h after p1: inside 24h, outside 4h
+      sym('s2', '2026-09-03T13:00', 'crying', 1),   // 1h after b1
+      sym('s3', '2026-09-05T13:00', 'crying', 3),   // 1h after b2
+    ],
+  });
+  const range = { from: '2026-09-01T00:00', to: '2026-09-08T00:00', now: '2026-09-10T00:00' };
+  const r = L.suspectsByPathway(s, { ...range, settings: s.settings });
+  assert.equal(r.parent.windowHours, 24);
+  assert.equal(r.baby.windowHours, 4);
+  assert.equal(r.parent.who, 'parent');
+  assert.equal(r.baby.who, 'baby');
+  // The diary starts Sep 2: 144 hours to Sep 8, 6 points in all.
+  assert.ok(near(r.parent.baseline, (6 / 144) * 24));
+  assert.ok(near(r.baby.baseline, (6 / 144) * 4), 'the baseline is scaled to each window');
+  const pd = r.parent.ranked.find((x) => x.tag === 'dairy');
+  const bd = r.baby.ranked.find((x) => x.tag === 'dairy');
+  assert.deepEqual([pd.exposures, pd.complete, pd.followed, pd.meanAfter], [2, 2, 1, 1], "only the parent's two exposures, only the 24h windows");
+  assert.deepEqual([bd.exposures, bd.complete, bd.followed, bd.meanAfter], [2, 2, 2, 2], "only the baby's two exposures, only the 4h windows");
+  assert.ok(near(pd.ratio, 1));
+  assert.ok(near(bd.ratio, 2 / ((6 / 144) * 4)), 'the same tag scores differently per pathway');
+  assert.equal([...r.parent.ranked, ...r.parent.notEnough].some((x) => x.tag === 'egg'), false, "egg never reached the milk");
+  assert.deepEqual(r.baby.notEnough.map((x) => [x.tag, x.exposures]), [['egg', 1]]);
+  const all = L.suspects(s, { ...range, windowHours: 24 });
+  assert.equal(all.ranked.find((x) => x.tag === 'dairy').exposures, 4, 'without a pathway, every exposure counts together as before');
+});
+
 // ---- DST-adjacent days -------------------------------------------------------
 
 test('DST: days bucket by local date and series never skip or repeat a day', () => {

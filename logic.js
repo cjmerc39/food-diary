@@ -4,6 +4,15 @@
 
 export const STATE_VERSION = 1;
 export const WINDOW_CHOICES = [6, 12, 24, 48, 72];
+// Food the baby eats directly reacts faster than food reaching the milk: 1 to 4 hours, typically.
+export const DIRECT_WINDOW_CHOICES = [1, 2, 4, 8];
+
+// Two exposure pathways: what the parent eats reaches the baby through breast
+// milk; once solids start, the baby's own food is the second. Older entries
+// carry no `who`, and mean the parent.
+export const WHO = ['parent', 'baby'];
+export const eventWho = (e) => (e.who === 'baby' ? 'baby' : 'parent');
+export const hasBabyFood = (state) => state.foodLog.some((e) => eventWho(e) === 'baby');
 
 // Starter allergen vocabulary. Events store ids; labels are for display.
 export const STARTER_TAGS = [
@@ -384,20 +393,23 @@ export function welcomeVariant(hour, random = Math.random()) {
 }
 
 // Every food event carrying the tag, oldest first. Possibly-hidden counts half.
-export function exposuresOf(foodLog, tag) {
+// `who` narrows to one pathway; null means both.
+export function exposuresOf(foodLog, tag, who = null) {
   const out = [];
   for (const e of foodLog) {
-    if (!isTs(e.ts)) continue;
+    if (!isTs(e.ts) || (who && eventWho(e) !== who)) continue;
     const on = (e.tags || []).includes(tag);
     const maybe = !on && (e.uncertain || []).includes(tag);
-    if (on || maybe) out.push({ event: e, ts: e.ts, ms: tsMs(e.ts), uncertain: maybe, weight: maybe ? 0.5 : 1 });
+    if (on || maybe) out.push({ event: e, ts: e.ts, ms: tsMs(e.ts), uncertain: maybe, weight: maybe ? 0.5 : 1, who: eventWho(e) });
   }
   return out.sort((a, b) => a.ms - b.ms);
 }
 
 // Banners for Today: a food carrying a tag (or possibly hiding it) that was
 // under an elimination when eaten, in the last 72 hours, not dismissed.
-// One banner per exposure, keyed "eventId:tag". Newest first.
+// One banner per exposure, keyed "eventId:tag". Newest first. Eliminations
+// describe the parent's diet, but the baby eating that food matters at least
+// as much, so both pathways raise banners; `who` says which.
 export function exposureBanners(state, now) {
   const nowMs = tsMs(now);
   const dismissed = new Set(state.dismissed);
@@ -410,7 +422,7 @@ export function exposureBanners(state, now) {
       const key = `${e.id}:${tag}`;
       if (dismissed.has(key)) continue;
       if (!state.phases.some((p) => p.kind === 'eliminate' && p.tag === tag && isPhaseActive(p, e.ts))) continue;
-      banners.push({ key, tag, uncertain, ts: e.ts, eventId: e.id, name: e.name });
+      banners.push({ key, tag, uncertain, ts: e.ts, eventId: e.id, name: e.name, who: eventWho(e) });
     }
   }
   return banners.sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
@@ -441,7 +453,7 @@ export function reintroWatches(state, now) {
           const endMs = x.ms + WATCH_HOURS * HOUR;
           const { points, count } = index.between(x.ms, Math.min(endMs, nowMs));
           return {
-            eventId: x.event.id, name: x.event.name, ts: x.ts, uncertain: x.uncertain,
+            eventId: x.event.id, name: x.event.name, ts: x.ts, uncertain: x.uncertain, who: x.who,
             points, count, watching: endMs > nowMs, hoursLeft: Math.max(0, (endMs - nowMs) / HOUR),
           };
         })
@@ -462,7 +474,9 @@ export function reintroWatches(state, now) {
 // past `to`. Overlapping windows share symptom events, so one flare can count
 // toward several exposures and several tags eaten together; that is fine for
 // a hint list, and it is why the UI says correlation, not diagnosis.
-export function suspects(state, { from, to, windowHours, now, minWeight = 2 }) {
+// `who` scores one pathway with its own window (see suspectsByPathway); null
+// scores every exposure together.
+export function suspects(state, { from, to, windowHours, now, minWeight = 2, who = null }) {
   const nowMs = tsMs(now);
   // A diary younger than the range has no data before its first entry.
   // Counting those empty hours would shrink the baseline and inflate ratios.
@@ -478,12 +492,15 @@ export function suspects(state, { from, to, windowHours, now, minWeight = 2 }) {
   const baseline = hours > 0 ? (totalPoints / hours) * windowHours : 0;
 
   const tagIds = new Set();
-  for (const e of state.foodLog) for (const t of [...(e.tags || []), ...(e.uncertain || [])]) tagIds.add(t);
+  for (const e of state.foodLog) {
+    if (who && eventWho(e) !== who) continue;
+    for (const t of [...(e.tags || []), ...(e.uncertain || [])]) tagIds.add(t);
+  }
 
   const ranked = [];
   const notEnough = [];
   for (const tag of tagIds) {
-    const inRange = exposuresOf(state.foodLog, tag).filter((x) => x.ms >= fromMs && x.ms <= toMs);
+    const inRange = exposuresOf(state.foodLog, tag, who).filter((x) => x.ms >= fromMs && x.ms <= toMs);
     if (!inRange.length) continue;
     const complete = inRange.filter((x) => x.ms + windowMs <= nowMs);
     let weight = 0, weightedPoints = 0, followed = 0;
@@ -505,7 +522,18 @@ export function suspects(state, { from, to, windowHours, now, minWeight = 2 }) {
   ranked.sort((a, b) => (b.ratio ?? -1) - (a.ratio ?? -1) ||
     b.followed / b.complete - a.followed / a.complete || b.weight - a.weight || a.tag.localeCompare(b.tag));
   notEnough.sort((a, b) => b.exposures - a.exposures || a.tag.localeCompare(b.tag));
-  return { ranked, notEnough, baseline, totalPoints, hours, windowHours };
+  return { ranked, notEnough, baseline, totalPoints, hours, windowHours, who };
+}
+
+// Suspects per pathway, each with its own window: the parent's food through
+// breast milk (windowHours) and the baby's own food (directWindowHours). A tag
+// eaten both ways is scored twice, on purpose; the two scores mean different things.
+export function suspectsByPathway(state, { from, to, now, settings, minWeight = 2 }) {
+  const shared = { from, to, now, minWeight };
+  return {
+    parent: suspects(state, { ...shared, who: 'parent', windowHours: settings.windowHours }),
+    baby: suspects(state, { ...shared, who: 'baby', windowHours: settings.directWindowHours }),
+  };
 }
 
 // ---- trends and report -------------------------------------------------------
@@ -684,6 +712,7 @@ export function sanitizeDiary(s) {
     return {
       ...e, name: text(e.name, 80).trim() || 'Food', tags, uncertain: tagList(e.uncertain).filter((t) => !tags.includes(t)),
       mealId: typeof e.mealId === 'string' && SAFE_ID.test(e.mealId) ? e.mealId : null, note: text(e.note),
+      who: eventWho(e),   // entries from before solids carry none, and mean the parent
     };
   });
 
@@ -771,7 +800,8 @@ export function freshState() {
     onboarded: false,
     babyName: '',
     settings: {
-      windowHours: 24,
+      windowHours: 24,        // suspects window after the parent eats a food (through breast milk)
+      directWindowHours: 4,   // suspects window after the baby eats a food directly
       customTags: [],   // [{ id, label }], id slugified from label
       hiddenTags: [],   // tag ids hidden from pickers, never deleted
     },
@@ -817,6 +847,9 @@ export function normalizeState(s) {
   out.settings = { ...base.settings, ...(isObj(s.settings) ? s.settings : {}) };
   if (!WINDOW_CHOICES.includes(out.settings.windowHours)) {
     out.settings.windowHours = base.settings.windowHours;
+  }
+  if (!DIRECT_WINDOW_CHOICES.includes(out.settings.directWindowHours)) {
+    out.settings.directWindowHours = base.settings.directWindowHours;
   }
   for (const k of ['customTags', 'hiddenTags']) {
     if (!Array.isArray(out.settings[k])) out.settings[k] = [];

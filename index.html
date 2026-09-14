@@ -255,6 +255,9 @@ svg{display:block;flex:none}
 .tag{display:inline-flex;align-items:center;min-height:26px;padding:0 10px;border-radius:999px;
   border:1.5px solid var(--food-soft);background:var(--food-soft);color:var(--food-ink);font-size:14px;font-weight:600}
 .tag.maybe{background:transparent;border-style:dashed;border-color:var(--food)}
+/* The baby's own food: a calm name pill, so a day reads as "she ate X, he ate Y". */
+.entry .who{flex:none;align-self:center;padding:2px 8px;border-radius:999px;background:var(--sunk);color:var(--ink2);
+  font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
 .pips{display:inline-flex;align-items:center;gap:4px;margin-right:4px}
 .pip{width:11px;height:11px;border-radius:50%;border:1.5px solid var(--sym)}
 .pip.on{background:var(--sym)}
@@ -425,6 +428,10 @@ svg{display:block;flex:none}
 .suspects{margin-bottom:12px}
 .winpick{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin:10px 0 4px}
 .winpick .chip{padding:0}
+.winpick.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+/* suspects, one block per pathway */
+.pathway + .pathway{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+.pathway-title{margin-top:12px;font:600 17px/1.3 var(--round)}
 .suspect{padding:12px 0;border-top:1px solid var(--line)}
 .winpick + .suspect,.winpick + .hint{margin-top:10px}
 .suspect-top{display:flex;align-items:baseline;gap:10px}
@@ -476,6 +483,7 @@ details[open].more-card > summary::after{transform:translateY(2px) rotate(-135de
 .report-meta{margin-top:4px;color:var(--ink2);font-size:14px}
 .report .chart{margin-top:10px}
 .table-wrap{margin-top:8px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.report h3{margin:14px 0 6px;font-size:15px}
 .report table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.35}
 .report th{padding:6px 12px 6px 0;border-bottom:1px solid var(--ink3);color:var(--ink2);font-weight:600;text-align:left;white-space:nowrap}
 .report td{padding:6px 12px 6px 0;border-bottom:1px solid var(--line);vertical-align:top}
@@ -618,6 +626,7 @@ import {
   standaloneHeight, LOAD_CATS, WINDOW_CHOICES, TREND_RANGES, daysBetween, slugify,
   trendDays, trendSeries, phaseBands, phaseTagSlots, suspects, rangeEntries,
   addCustomTag, tagInUse, mergeStates, readBackup, APP_ID, backupReminder, dayGlance, dayRest, welcomeVariant, setItem,
+  eventWho, hasBabyFood, WHO, DIRECT_WINDOW_CHOICES, suspectsByPathway,
 } from './logic.js';
 
 // ---- identity ------------------------------------------------------------------
@@ -626,7 +635,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 12;
+const BUILD = 13;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -1125,10 +1134,11 @@ function entryHtml({ kind, e }) {
       ...(e.tags || []).map((t) => tagChipHtml(t, false)),
       ...(e.uncertain || []).filter((t) => !(e.tags || []).includes(t)).map((t) => tagChipHtml(t, true)),
     ].join('');
-    return `<li><button class="entry food" data-act="edit-food" data-id="${esc(e.id)}">
+    const baby = eventWho(e) === 'baby';
+    return `<li><button class="entry food${baby ? ' baby' : ''}" data-act="edit-food" data-id="${esc(e.id)}">
       <span class="entry-ico">${ICON.food}</span>
       <span class="entry-main">
-        <span class="entry-top"><span class="entry-name">${esc(e.name)}</span>${time}</span>
+        <span class="entry-top"><span class="entry-name">${esc(e.name)}</span>${baby ? `<span class="who">${esc(babyLabel())}</span>` : ''}${time}</span>
         ${tags ? `<span class="entry-meta">${tags}</span>` : ''}${note}
       </span></button></li>`;
   }
@@ -1150,8 +1160,12 @@ function todayCardsHtml(now) {
   const banners = exposureBanners(S, now).map((b) => {
     const label = tagLabel(S.settings, b.tag);
     const what = b.uncertain ? `Possible hidden ${label.toLowerCase()}` : label;
-    return `<div class="banner" role="status">${ICON.alert}
-      <p>${esc(`${what} logged ${weekdayTime(b.ts)} during elimination. Watch the next 24 to 72h.`)}</p>
+    // Through the milk the lag is up to a day or three; food the baby ate directly acts within hours.
+    const text = b.who === 'baby'
+      ? `${babyLabel()} ate ${what.toLowerCase()} ${weekdayTime(b.ts)} during elimination. Direct exposure: watch the next few hours.`
+      : `${what} logged ${weekdayTime(b.ts)} during elimination. Watch the next 24 to 72h.`;
+    return `<div class="banner" role="status" data-who="${b.who}">${ICON.alert}
+      <p>${esc(text)}</p>
       <button class="xbtn" data-act="dismiss" data-key="${esc(b.key)}" aria-label="Dismiss">${ICON.close}</button>
     </div>`;
   }).join('');
@@ -1183,21 +1197,22 @@ function watchHtml(w) {
   const label = tagLabel(S.settings, w.phase.tag);
   const food = label.toLowerCase();
   const [latest, ...earlier] = w.exposures;
+  const ate = (x) => (x.who === 'baby' ? `${babyLabel()} ate ` : '');   // the watch runs for both pathways
   let main;
   if (latest && latest.watching) {
     const pct = Math.round(((WATCH_HOURS - latest.hoursLeft) / WATCH_HOURS) * 100);
     main = `<h3>Watching ${esc(food)}: ${Math.ceil(latest.hoursLeft)}h to go</h3>
       <div class="meter" role="progressbar" aria-label="Watch progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>
-      <p>${esc(pointsText(latest))} since ${esc(weekdayTime(latest.ts))}${latest.uncertain ? ' (possible exposure)' : ''}: ${esc(latest.name)}.</p>`;
+      <p>${esc(pointsText(latest))} since ${esc(weekdayTime(latest.ts))}${latest.uncertain ? ' (possible exposure)' : ''}: ${esc(ate(latest) + latest.name)}.</p>`;
   } else if (latest) {
     main = `<h3>Last ${esc(food)} watch is done</h3>
-      <p>${esc(pointsText(latest))} in the 72 hours after ${esc(weekdayTime(latest.ts))}.</p>`;
+      <p>${esc(pointsText(latest))} in the 72 hours after ${esc(weekdayTime(latest.ts))}${latest.who === 'baby' ? ` (${esc(babyLabel())} ate it)` : ''}.</p>`;
   } else {
     main = `<h3>Ready for the first try</h3>
       <p>When you eat ${esc(food)}, log it as usual. The app watches the next 72 hours and keeps a running tally here.</p>`;
   }
   const history = earlier.slice(0, 3).map((x) =>
-    `<li>${esc(weekdayTime(x.ts))}: ${esc(pointsText(x).toLowerCase())}${x.watching ? ' so far' : ''}</li>`).join('');
+    `<li>${esc(weekdayTime(x.ts))}${x.who === 'baby' ? ` (${esc(babyLabel())})` : ''}: ${esc(pointsText(x).toLowerCase())}${x.watching ? ' so far' : ''}</li>`).join('');
   return `<section class="card watch">
     <div class="phase-top"><span class="tagpill sym">${esc(label)}</span><span class="status on">Reintroduction, day ${w.day}</span></div>
     ${main}
@@ -1253,8 +1268,17 @@ function dailyListHtml(series) {
 }
 
 // ---- suspects ------------------------------------------------------------------------------
+// Scored per pathway: what the parent eats reaches the baby through the milk
+// (settings.windowHours); once solids start, the baby's own food is scored on
+// its own, faster window (settings.directWindowHours). The baby's block shows
+// once any food has been logged for the baby.
 const suspectData = (fromDay, toTs) =>
-  suspects(S, { from: `${fromDay}T00:00`, to: toTs, windowHours: S.settings.windowHours, now: nowTs() });
+  suspectsByPathway(S, { from: `${fromDay}T00:00`, to: toTs, now: nowTs(), settings: S.settings });
+const PATHWAY_TITLE = { parent: () => 'Via breast milk', baby: () => `${babyLabel()}'s own food` };
+const PATHWAY_NOTE = {
+  parent: () => 'What you eat reaches the milk over hours, and can show up to a day or more later.',
+  baby: () => 'Food eaten directly acts faster, typically within 1 to 4 hours.',
+};
 const fmtRatio = (x) => `${x >= 10 ? Math.round(x) : x.toFixed(1)}x`;
 const exposureText = (row) => `${plural(row.exposures, 'exposure')}${row.possible ? ` (${row.possible} possible)` : ''}`;
 
@@ -1266,12 +1290,15 @@ function suspectFacts(row, hours) {
   ];
 }
 
-const windowChipsHtml = (hours) => `<div class="winpick" role="group" aria-label="Hours after eating">${WINDOW_CHOICES.map((h) =>
-  `<button class="chip" data-act="window" data-hours="${h}" aria-pressed="${hours === h}">${h}h</button>`).join('')}</div>`;
+// The window picker for one pathway; the baby's is the shorter list.
+function windowChipsHtml(hours, who = 'parent') {
+  const choices = who === 'baby' ? DIRECT_WINDOW_CHOICES : WINDOW_CHOICES;
+  return `<div class="winpick${choices.length === 4 ? ' four' : ''}" role="group" aria-label="${who === 'baby' ? `Hours after ${esc(babyLabel())} eats` : 'Hours after eating'}">${choices.map((h) =>
+    `<button class="chip" data-act="${who === 'baby' ? 'direct-window' : 'window'}" data-hours="${h}" aria-pressed="${hours === h}">${h}h</button>`).join('')}</div>`;
+}
 
-function suspectsCardHtml(fromDay) {
-  const hours = S.settings.windowHours;
-  const r = suspectData(fromDay, nowTs());
+function pathwayHtml(r, { titled }) {
+  const hours = r.windowHours;
   const ranked = r.ranked.map((row) => `
     <div class="suspect">
       <div class="suspect-top"><span class="suspect-name">${esc(tagLabel(S.settings, row.tag))}</span>${row.ratio == null ? '' : `<span class="suspect-ratio">${fmtRatio(row.ratio)}</span>`}</div>
@@ -1280,12 +1307,22 @@ function suspectsCardHtml(fromDay) {
     </div>`).join('');
   const few = r.notEnough.map((row) =>
     `<li>${esc(tagLabel(S.settings, row.tag))}: ${esc(exposureText(row))}${row.watching ? `, ${row.watching} still inside the window` : ''}</li>`).join('');
-  return `<section class="card suspects">
-    <h2 class="chart-title">Suspects</h2>
-    <p class="fine">For each food, the symptom points in the hours after eating it, compared with a usual stretch of the same length in this range. Possibly hidden exposures count half.</p>
-    ${windowChipsHtml(hours)}
+  return `<div class="pathway" data-who="${r.who}">
+    ${titled ? `<h3 class="pathway-title">${esc(PATHWAY_TITLE[r.who]())}</h3><p class="fine">${esc(PATHWAY_NOTE[r.who]())}</p>` : ''}
+    ${windowChipsHtml(hours, r.who)}
     ${ranked || `<p class="hint">No food has two exposures with a finished ${hours}h window in this range yet.</p>`}
     ${few ? `<details class="more-card"><summary>Not enough data yet (${r.notEnough.length})</summary><ul class="plain">${few}</ul></details>` : ''}
+  </div>`;
+}
+
+function suspectsCardHtml(fromDay) {
+  const r = suspectData(fromDay, nowTs());
+  const solids = hasBabyFood(S);
+  return `<section class="card suspects">
+    <h2 class="chart-title">Suspects</h2>
+    <p class="fine">For each food, the symptom points in the hours after it was eaten, compared with a usual stretch of the same length in this range. Possibly hidden exposures count half.${solids ? ` Food reaches ${esc(babyLabel())} two ways, so each way is scored on its own; the same food can show up in both.` : ''}</p>
+    ${pathwayHtml(r.parent, { titled: solids })}
+    ${solids ? pathwayHtml(r.baby, { titled: true }) : ''}
     <p class="caveat">Correlation, not diagnosis. Coincidence puts innocent foods here.</p>
   </section>`;
 }
@@ -1575,8 +1612,12 @@ function viewMore() {
       ${row('edit-name', "Baby's name", S.babyName.trim() || 'Not set')}
       ${row('edit-tags', 'Allergen tags', `${tags.length - hidden} shown${hidden ? `, ${hidden} hidden` : ''}`)}
       <div class="row row-block">
-        <span class="row-main">Suspects window<span class="row-sub">How many hours after eating a food count as "followed by symptoms"</span></span>
+        <span class="row-main">Suspects window<span class="row-sub">How many hours after you eat a food count as "followed by symptoms". Through breast milk, reactions can take up to a day.</span></span>
         ${windowChipsHtml(S.settings.windowHours)}
+      </div>
+      <div class="row row-block">
+        <span class="row-main">${esc(babyLabel())}'s own food<span class="row-sub">The same window for food ${esc(babyLabel())} eats directly. Direct exposure reacts faster, typically within 1 to 4 hours.</span></span>
+        ${windowChipsHtml(S.settings.directWindowHours, 'baby')}
       </div>
       <div class="row row-block">
         <span class="row-main">Appearance<span class="row-sub">System follows your phone's Light or Dark setting</span></span>
@@ -1681,11 +1722,11 @@ function entryTags({ kind, e }) {
 function reportHtml() {
   const { from, to } = U.report;
   const now = nowTs();
-  const hours = S.settings.windowHours;
   const name = S.babyName.trim();
   const series = trendSeries(S, from, to);
   const bands = phaseBands(S.phases, from, to);
   const sus = suspectData(from, `${to}T23:59`);
+  const solids = hasBabyFood(S);
   const entries = rangeEntries(S, from, to);
   const table = (head, rows, cls = '') => `<div class="table-wrap"><table${cls ? ` class="${cls}"` : ''}>`
     + `<thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -1698,12 +1739,23 @@ function reportHtml() {
       + `<td class="nowrap">${length}</td><td>${esc(p.note || '')}</td></tr>`;
   }).join('');
 
-  const suspectRows = sus.ranked.map((row) => `<tr><td>${esc(tagLabel(S.settings, row.tag))}</td><td>${esc(exposureText(row))}</td>`
-    + `<td class="nowrap">${row.followed} of ${row.complete}</td><td>${row.ratio == null ? 'no symptoms in range' : `${fmtRatio(row.ratio)} baseline`}</td></tr>`).join('');
-  const few = sus.notEnough.map((row) => `${tagLabel(S.settings, row.tag)} (${exposureText(row)})`).join(', ');
+  // One suspects table per pathway; the baby's only once solids have started.
+  const suspectTable = (r) => {
+    const hours = r.windowHours;
+    const rows = r.ranked.map((row) => `<tr><td>${esc(tagLabel(S.settings, row.tag))}</td><td>${esc(exposureText(row))}</td>`
+      + `<td class="nowrap">${row.followed} of ${row.complete}</td><td>${row.ratio == null ? 'no symptoms in range' : `${fmtRatio(row.ratio)} baseline`}</td></tr>`).join('');
+    const few = r.notEnough.map((row) => `${tagLabel(S.settings, row.tag)} (${exposureText(row)})`).join(', ');
+    return `${rows ? table(['Food', 'Exposures', `Followed within ${hours}h`, 'Load after exposure'], rows)
+      : `<p class="report-meta">No food had two exposures with a finished ${hours}-hour window in this range.</p>`}
+      ${few ? `<p class="report-meta">Not enough data yet: ${esc(few)}.</p>` : ''}`;
+  };
+  const suspectIntro = solids
+    ? `Symptom points in the hours after each food was eaten, compared with a usual stretch of the same length in this range: ${sus.parent.windowHours} hours for food reaching ${esc(name || 'the baby')} through breast milk, ${sus.baby.windowHours} hours for food ${esc(name || 'the baby')} ate directly. The same food can appear under both.`
+    : `Symptom points in the ${sus.parent.windowHours} hours after eating each food, compared with a usual ${sus.parent.windowHours}-hour stretch in this range.`;
 
   const logRows = entries.map((r) => `<tr><td class="nowrap">${esc(fmtDate(r.e.ts, { weekday: true }))}</td><td class="nowrap">${esc(fmtTime(r.e.ts))}</td>`
-    + `<td>${r.kind === 'food' ? 'Food' : 'Symptom'}</td><td>${esc(entryDetail(r))}</td><td>${esc(entryTags(r))}</td></tr>`).join('');
+    + `<td>${r.kind === 'food' ? 'Food' : 'Symptom'}</td><td class="nowrap">${r.kind === 'food' ? esc(whoLabel(eventWho(r.e), { report: true })) : ''}</td>`
+    + `<td>${esc(entryDetail(r))}</td><td>${esc(entryTags(r))}</td></tr>`).join('');
 
   return `<article class="report">
     <header>
@@ -1723,15 +1775,16 @@ function reportHtml() {
     </section>
     <section class="keep">
       <h2>Suspects</h2>
-      <p class="report-meta">Symptom points in the ${hours} hours after eating each food, compared with a usual ${hours}-hour stretch in this range. Possibly hidden exposures count half, and a food needs two exposures to be listed.</p>
-      ${suspectRows ? table(['Food', 'Exposures', `Followed within ${hours}h`, 'Load after exposure'], suspectRows) : `<p class="report-meta">No food had two exposures with a finished ${hours}-hour window in this range.</p>`}
-      ${few ? `<p class="report-meta">Not enough data yet: ${esc(few)}.</p>` : ''}
+      <p class="report-meta">${suspectIntro} Possibly hidden exposures count half, and a food needs two exposures to be listed.</p>
+      ${solids ? `<h3>Via breast milk (${sus.parent.windowHours}h window)</h3>` : ''}
+      ${suspectTable(sus.parent)}
+      ${solids ? `<h3>${esc(babyLabel())}'s own food (${sus.baby.windowHours}h window)</h3>${suspectTable(sus.baby)}` : ''}
       <p class="caveat">Correlation, not diagnosis. Coincidence puts innocent foods here.</p>
     </section>
     <section>
       <h2>Log</h2>
-      <p class="report-meta">Oldest first. A ? after an allergen means it was possibly hidden.</p>
-      ${logRows ? table(['Date', 'Time', 'Kind', 'Detail', 'Allergens'], logRows, 'log') : '<p class="report-meta">No entries in this range.</p>'}
+      <p class="report-meta">Oldest first. Who says who ate the food${name ? ` (Parent, or ${esc(name)})` : ''}. A ? after an allergen means it was possibly hidden.</p>
+      ${logRows ? table(['Date', 'Time', 'Kind', 'Who', 'Detail', 'Allergens'], logRows, 'log') : '<p class="report-meta">No entries in this range.</p>'}
     </section>
     <footer class="report-foot">Kept by a parent for discussion with our pediatrician. Not a diagnostic record.</footer>
   </article>`;
@@ -2199,13 +2252,28 @@ function mealTagsText(m) {
   return [...m.tags.map((t) => tagLabel(S.settings, t)), ...m.uncertain.map((t) => `${tagLabel(S.settings, t)}?`)].join(' · ');
 }
 
+// ---- who ate it ----------------------------------------------------------------------------
+// The parent's food reaches the baby through breast milk; once solids start,
+// the baby's own food is a second pathway. The meal library is shared.
+const babyLabel = () => S.babyName.trim() || 'Baby';
+const whoLabel = (who, { report = false } = {}) => (who === 'baby' ? babyLabel() : report ? 'Parent' : 'Me');
+const whoPickHtml = (d) => `<div class="sect who-pick"><span class="sect-label">Who ate it</span>
+  <div class="seg" role="group" aria-label="Who ate it">${WHO.map((w) =>
+    `<button data-act="who" data-who="${w}" aria-pressed="${d.who === w}">${esc(whoLabel(w))}</button>`).join('')}</div></div>`;
+// Updated in place, so a search being typed is never disturbed.
+const whoAction = (d) => (b) => {
+  d.who = b.dataset.who;
+  for (const x of sheet.el.querySelectorAll('[data-act="who"]')) x.setAttribute('aria-pressed', x.dataset.who === d.who);
+  if (d.mode === 'pick') patch('results', mealResultsHtml(d));
+};
+
 const hasFoodInput = (d) => !!(d.name.trim() || d.tags.length || d.uncertain.length);
 const sameTags = (a, b) => a.tags.length === b.tags.length && a.uncertain.length === b.uncertain.length &&
   a.tags.every((t) => b.tags.includes(t)) && a.uncertain.every((t) => b.uncertain.includes(t));
 const foodName = (d) => d.name.trim() || autoMealName(S.settings, d.tags, d.uncertain);
 
 function foodFieldsHtml(d, { withSave = false } = {}) {
-  return `
+  return `${'who' in d ? whoPickHtml(d) : ''}
     <label class="sect"><span class="sect-label">Meal</span>
       <input class="input" type="text" data-field="name" value="${esc(d.name)}" placeholder="What did you eat?" maxlength="80" autocomplete="off" enterkeyhint="done"></label>
     <div class="sect"><span class="sect-label">Allergens</span><div data-region="tags">${tagPickerHtml(d)}</div></div>
@@ -2217,7 +2285,7 @@ function foodFieldsHtml(d, { withSave = false } = {}) {
 
 // ---- + food ----------------------------------------------------------------------------
 function openFoodSheet(draft = null) {
-  const d = draft || { mode: S.meals.length ? 'pick' : 'new', q: '', name: '', tags: [], uncertain: [], note: '', save: true, when: defaultWhen() };
+  const d = draft || { mode: S.meals.length ? 'pick' : 'new', who: 'parent', q: '', name: '', tags: [], uncertain: [], note: '', save: true, when: defaultWhen() };
   const view = () => (d.mode === 'pick'
     ? { body: foodPickBody(d), foot: foodPickFoot(d) }
     : { body: foodFieldsHtml(d, { withSave: true }), foot: foodNewFoot(d) });
@@ -2235,6 +2303,7 @@ function openFoodSheet(draft = null) {
         if (!d.name) sheet.el.querySelector('[data-field="name"]').focus();
       },
       'food-back': () => { d.mode = 'pick'; fillSheet(view()); },
+      who: whoAction(d),
       tag: tagAction(d, () => setFoot(foodNewState(d))),
       'save-toggle': (b) => { d.save = !d.save; b.setAttribute('aria-checked', d.save); },
       when: whenAction(d),
@@ -2253,8 +2322,8 @@ function openFoodSheet(draft = null) {
 }
 
 function foodPickBody(d) {
-  return `
-    <label class="search">${ICON.search}<span class="sr">Search your meals</span>
+  return `${whoPickHtml(d)}
+    <label class="search sect">${ICON.search}<span class="sr">Search your meals</span>
       <input class="input" type="search" data-field="q" value="${esc(d.q)}" placeholder="Search your meals" autocomplete="off" autocorrect="off" enterkeyhint="search"></label>
     <div data-region="results">${mealResultsHtml(d)}</div>`;
 }
@@ -2279,7 +2348,7 @@ function mealResultsHtml(d) {
       : `<p class="hint">No saved meal matches &ldquo;${esc(q)}&rdquo;. Tap New meal below to log it.</p>`;
   }
   const when = d.when.mode === 'now' ? 'now' : `for ${whenLabel(resolveWhen(d.when))}`;
-  return `<p class="sect sect-label">Tap a meal to log it ${esc(when)}</p>
+  return `<p class="sect sect-label">Tap a meal to log it ${d.who === 'baby' ? `for ${esc(babyLabel())} ` : ''}${esc(when)}</p>
     <div class="meal-grid">${rankMeals(S.meals, nowTs()).map(mealChipHtml).join('')}</div>
     <p class="hint">Press and hold a meal to edit it.</p>`;
 }
@@ -2300,14 +2369,14 @@ function logMeal(id, d) {
   if (!m) return;
   const ts = resolveWhen(d.when);
   const before = { useCount: m.useCount, lastUsed: m.lastUsed };
-  const ev = { id: newId(), ts, mealId: m.id, name: m.name, tags: [...m.tags], uncertain: [...m.uncertain], note: '' };
+  const ev = { id: newId(), ts, who: d.who, mealId: m.id, name: m.name, tags: [...m.tags], uncertain: [...m.uncertain], note: '' };
   S.foodLog.push(ev);
   m.useCount = (m.useCount || 0) + 1;
   m.lastUsed = nowTs();
   save();
   closeSheet();
   render();
-  toast(`Logged ${m.name}, ${whenLabel(ts)}`, {
+  toast(`Logged ${m.name}${d.who === 'baby' ? ` for ${babyLabel()}` : ''}, ${whenLabel(ts)}`, {
     ms: 7000,
     icon: 'meal',
     actions: [
@@ -2351,12 +2420,12 @@ async function logNewFood(d) {
     meal.lastUsed = nowTs();
   }
   const ts = resolveWhen(d.when);
-  const ev = { id: newId(), ts, mealId: meal ? meal.id : null, name, tags: [...d.tags], uncertain: [...d.uncertain], note: d.note.trim() };
+  const ev = { id: newId(), ts, who: d.who, mealId: meal ? meal.id : null, name, tags: [...d.tags], uncertain: [...d.uncertain], note: d.note.trim() };
   S.foodLog.push(ev);
   save();
   closeSheet();
   render();
-  toast(`Logged ${name}, ${whenLabel(ts)}.${retagged ? ' Saved meal updated.' : ''}`, {
+  toast(`Logged ${name}${d.who === 'baby' ? ` for ${babyLabel()}` : ''}, ${whenLabel(ts)}.${retagged ? ' Saved meal updated.' : ''}`, {
     ms: 7000,
     icon: 'meal',
     actions: [{ label: 'Undo', fn: () => undoFood(ev.id, meal && meal.id, before, created) }],
@@ -2401,7 +2470,7 @@ function openTimeSheet(id) {
 function openFoodEdit(id) {
   const ev = S.foodLog.find((e) => e.id === id);
   if (!ev) return;
-  const d = { name: ev.name, tags: [...(ev.tags || [])], uncertain: [...(ev.uncertain || [])], note: ev.note || '', when: { mode: 'at', ts: ev.ts } };
+  const d = { who: eventWho(ev), name: ev.name, tags: [...(ev.tags || [])], uncertain: [...(ev.uncertain || [])], note: ev.note || '', when: { mode: 'at', ts: ev.ts } };
   const start = JSON.stringify(d);
   openSheet({
     title: 'Edit food',
@@ -2411,11 +2480,12 @@ function openFoodEdit(id) {
       <button class="btn btn-food" data-act="save" data-primary>Save</button></div>`,
     isDirty: () => JSON.stringify(d) !== start,
     actions: {
+      who: whoAction(d),
       tag: tagAction(d, () => setFoot(foodNewState(d))),
       when: whenAction(d),
       save: () => {
         if (!hasFoodInput(d)) return;
-        Object.assign(ev, { name: foodName(d), tags: [...d.tags], uncertain: [...d.uncertain], note: d.note.trim(), ts: resolveWhen(d.when) });
+        Object.assign(ev, { who: d.who, name: foodName(d), tags: [...d.tags], uncertain: [...d.uncertain], note: d.note.trim(), ts: resolveWhen(d.when) });
         save();
         closeSheet();
         render();
@@ -3169,6 +3239,7 @@ const ACTIONS = {
   'day-today': () => { U.day = null; render(); },
   'trend-range': (el) => { U.trendRange = el.dataset.range; render(); },
   window: (el) => { S.settings.windowHours = +el.dataset.hours; save(); render(); },
+  'direct-window': (el) => { S.settings.directWindowHours = +el.dataset.hours; save(); render(); },
   'open-report': () => showReport(),
   'report-close': () => { showScreen('app'); render(); },
   'report-print': () => printReport(),

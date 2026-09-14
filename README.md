@@ -33,12 +33,21 @@ own files so it works offline; the diary itself lives only in localStorage.
   rename, change, or remove it; logged entries never change. Tap an entry to
   edit or delete it; arrows, the date, or a swipe change the day. Every
   entry's time can be backdated.
+- **Solids:** every food entry records who ate it, the parent (through breast
+  milk) or the baby directly. The `+ food` sheet opens with a two-way toggle
+  at the top, defaulting to the parent and naming the baby; the meal library
+  is shared. Baby entries carry a small name pill on Today. Exposure banners
+  and the reintroduction watch fire for both pathways and say who ate the food.
 - **Trends:** daily symptom load with one track per phase food behind the
-  line, per-category strips, and the suspects list with its window editable
-  inline. Correlation, not diagnosis.
+  line, per-category strips, and the suspects list, scored per pathway once
+  the baby has eaten anything: food reaching the baby through breast milk uses
+  the suspects window (default 24h), the baby's own food a faster one (default
+  4h, options 1/2/4/8, both editable inline and in More). The same food can
+  appear under both with different scores. Correlation, not diagnosis.
 - **Phases:** eliminations and reintroductions. They drive the exposure
   banners on Today and the 72-hour reintroduction watch card.
-- **More > Report:** a print-styled summary for the pediatrician. Print (it
+- **More > Report:** a print-styled summary for the pediatrician, with a Who
+  column in the log and both suspect pathways. Print (it
   works from the Home Screen app), save a PDF from the print preview, or
   **Share as a file** for a printable copy in Files, Mail, or AirDrop.
 - **More > Back up now:** saves the whole diary as a JSON file through the
@@ -104,8 +113,9 @@ then show "A new version is ready" with a Reload button. Releases are tagged.
   `cjmerc39.github.io` share one localStorage and one Cache Storage, so this app
   only touches its own key prefix and its own `food-diary-shell-` caches. Never
   call `localStorage.clear()`; Clear all data removes only `food-diary:` keys.
-- `state.v` is the schema version. Migrations are additive (symptom sets, for
-  example, are an extra array; older saves simply gain an empty one). A build
+- `state.v` is the schema version. Migrations are additive (symptom sets are an
+  extra array; `who` on food entries is an extra field, and a missing one means
+  the parent; older saves simply gain the defaults). A build
   that finds a newer version refuses to open or write the diary rather than
   guess.
 - Unreadable saved data is set aside under `food-diary:state:unreadable:<time>`
