@@ -677,6 +677,7 @@ import {
   allTags, tagLabel, tagState, cycleTag, sortPhases, isPhaseActive, phaseDay, phasesToClose,
   rankMeals, searchMeals, findMealByName, autoMealName,
   hasItems, itemResolver, resolveItems, itemTags, mealTags, findItemByLabel, pickableItems, mergeItem, itemSuspectsByPathway,
+  foodsToReview, foodReviewCard,
   symptomMissing, symptomFields, dayEntries, exposureBanners, pruneDismissed, reintroWatches,
   standaloneHeight, WINDOW_CHOICES, TREND_RANGES, daysBetween, slugify,
   trendDays, trendSeries, phaseBands, phaseTagSlots, suspects, rangeEntries,
@@ -691,7 +692,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 15;
+const BUILD = 16;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -1259,7 +1260,28 @@ function todayCardsHtml(now) {
       <button class="xbtn" data-act="dismiss" data-key="${esc(b.key)}" aria-label="Dismiss">${ICON.close}</button>
     </div>`;
   }).join('');
-  return banners + reintroWatches(S, now).map(watchHtml).join('') + backupNudgeHtml();
+  return banners + reintroWatches(S, now).map(watchHtml).join('') + reviewCardHtml() + backupNudgeHtml();
+}
+
+// After the update: the foods split out of her saved meals wait for a look.
+// The count goes down as she reviews them in More > Foods; the card retires
+// for good once it reaches zero, or when she dismisses it.
+function reviewCardHtml() {
+  const card = foodReviewCard(S);
+  if (!card) return '';
+  return `<section class="card nudge review-card" role="status">
+    <div class="nudge-top">${ICON.food}<h3><span class="review-count">${card.count}</span> ${card.count === 1 ? 'food' : 'foods'} to review</h3></div>
+    <p>Your saved meals were split into single foods when the app updated. Give each one its allergens in More, then Foods, so it logs right when you pick it on its own.</p>
+    <div class="nudge-acts">
+      <button class="btn" data-act="review-dismiss">Dismiss</button>
+      <button class="btn btn-primary" data-act="review-open">Review foods</button>
+    </div>
+  </section>`;
+}
+
+// The last food reviewed, merged, or hidden retires the card.
+function settleReview() {
+  if (!S.foodReviewDone && foodsToReview(S) === 0 && S.foodItems.length) S.foodReviewDone = true;
 }
 
 // Calm on purpose: the health cards above it matter more on any given day.
@@ -1780,7 +1802,7 @@ function viewMore() {
 
 function foodsStatus() {
   const live = S.foodItems.filter((it) => !it.mergedInto);
-  const review = live.filter((it) => !it.reviewed && !it.hidden).length;
+  const review = foodsToReview(S);
   return live.length ? `${plural(live.length, 'food')}${review ? `, ${review} to review` : ''}` : 'Added as you log meals';
 }
 
@@ -2968,6 +2990,7 @@ function openFoodItemSheet(id) {
         if (problem()) return;
         Object.assign(it, { label: d.label.trim().replace(/\s+/g, ' '), tags: [...d.tags], uncertain: [...d.uncertain], reviewed: true });
         if (d.shown) delete it.hidden; else it.hidden = true;
+        settleReview();
         save();
         closeSheet();
         toast(`${it.label} saved.`, { icon: 'check' });
@@ -3009,6 +3032,7 @@ function openMergeSheet(fromId) {
         });
         if (!ok) return;
         Object.assign(S, mergeItem(S, from.id, to.id));
+        settleReview();
         save();
         closeSheet();
         toast(`Merged into ${to.label}.`, { icon: 'check' });
@@ -3759,6 +3783,13 @@ const ACTIONS = {
   'edit-name': () => openNameSheet(),
   'edit-tags': () => openTagsSheet(),
   'edit-foods': () => openFoodsSheet(),
+  'review-open': () => openFoodsSheet(),
+  'review-dismiss': () => {
+    S.foodReviewDone = true;
+    save();
+    render();
+    toast('Card hidden. Foods to review stay in More, then Foods.');
+  },
   theme: (el) => { setTheme(el.dataset.theme); render(); },
   'clear-all': () => clearAllData(),
   'backup-now': () => exportBackup(),

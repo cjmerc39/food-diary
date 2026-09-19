@@ -781,7 +781,7 @@ const v1Diary = () => ({
   foodLog: [
     { ...food('e1', '2026-09-14T13:39'), name: 'Chicken kebabs, toast, mayo, coke zero', mealId: 'mk', note: 'at the park' },
     { ...food('e2', '2026-09-15T09:00', ['egg', 'wheat'], ['dairy']), name: 'Eggs, toast w/cream cheese, coffee,', mealId: 'mb' },
-    { ...food('e3', '2026-09-16T20:00', ['corn']), name: 'popcorn', mealId: 'mp' },            // case differs: stays an older entry
+    { ...food('e3', '2026-09-16T20:00', ['corn']), name: ' popcorn ', mealId: 'mp' },          // case and spacing differ: still the same meal
     { ...food('e4', '2026-09-16T12:00', ['wheat']), name: 'Sandwich from the deli', mealId: null }, // never saved: an older entry
   ],
   symptomLog: [sym('s1', '2026-09-14T18:00', 'crying', 2)],
@@ -821,7 +821,7 @@ test('migration to v2: allergens stay where she put them, so saved meals log exa
   assert.deepEqual(meal('mk').items.map((id) => s.foodItems.find((it) => it.id === id).label), ['Chicken kebabs', 'Toast', 'Mayo', 'Coke zero']);
 });
 
-test('migration to v2: logged entries never change; an exact name match gains a link to its foods', () => {
+test('migration to v2: logged entries never change; a name matching a saved meal, ignoring case, gains a link to its foods', () => {
   const before = v1Diary();
   const s = L.readState(JSON.stringify(before)).state;
   s.foodLog.forEach((e, i) => {
@@ -831,7 +831,7 @@ test('migration to v2: logged entries never change; an exact name match gains a 
   const link = (id) => s.foodLog.find((e) => e.id === id).items;
   assert.equal(link('e1').length, 4);
   assert.equal(link('e2').length, 3);
-  assert.equal(link('e3'), undefined, '"popcorn" is not exactly "Popcorn": an older entry');
+  assert.deepEqual(link('e3'), [L.findItemByLabel(s.foodItems, 'Popcorn').id], '" popcorn " is the saved "Popcorn", as the old app treated it');
   assert.equal(link('e4'), undefined, 'never saved as a meal: an older entry');
   assert.deepEqual(s.symptomLog, before.symptomLog);
   const restored = L.readBackup(JSON.stringify({ app: 'food-diary', ...before }));
@@ -847,6 +847,22 @@ test('restoring keeps long names whole instead of cutting them at the text box l
   assert.equal(r.state.foodLog[0].name, long);
   assert.equal(r.state.meals[0].name, long);
   assert.equal(r.state.foodLog[0].items.length, 5);
+});
+
+test('the review card counts foods left to review and retires for good', () => {
+  const food = (id, extra = {}) => ({ id, label: id, tags: [], uncertain: [], useCount: 0, lastUsed: null, reviewed: false, ...extra });
+  const s = diary({ foodItems: [food('a'), food('b'), food('c', { reviewed: true }), food('d', { hidden: true }), food('e', { mergedInto: 'c' })] });
+  assert.equal(L.foodsToReview(s), 2, 'reviewed, hidden, and merged-away foods are done with');
+  assert.deepEqual(L.foodReviewCard(s), { count: 2 });
+  assert.equal(L.foodReviewCard({ ...s, foodReviewDone: true }), null, 'dismissed, it stays gone');
+  assert.equal(L.foodReviewCard({ ...s, foodItems: s.foodItems.map((f) => ({ ...f, reviewed: true })) }), null, 'nothing left, no card');
+  assert.equal(L.foodReviewCard(diary()), null, 'a new diary has nothing to review');
+  assert.equal(L.freshState().foodReviewDone, false);
+  assert.equal(L.normalizeState({ v: 2 }).foodReviewDone, false, 'a diary from build 15 gains the field');
+  assert.equal(L.normalizeState({ v: 2, foodReviewDone: 'yes' }).foodReviewDone, false);
+  assert.equal(L.mergeStates({ ...s, foodReviewDone: true }, { ...s, foodReviewDone: false }).state.foodReviewDone, true, "a restore keeps the phone's choice");
+  const migrated = L.readState(JSON.stringify(v1Diary())).state;
+  assert.deepEqual(L.foodReviewCard(migrated), { count: migrated.foodItems.length }, 'after the update, every food split out of a meal is waiting');
 });
 
 test('foods: derived meal tags, lookup by label, and what the picker offers', () => {

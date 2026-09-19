@@ -53,7 +53,11 @@ own files so it works offline; the diary itself lives only in localStorage.
   Foods lists every food with its allergens and use count, the ones to review
   first; each can be renamed, retagged, hidden from the picker, or merged into
   another. Merging moves saved meals and future logs to the kept food and
-  leaves past entries alone, which then count toward it in Trends.
+  leaves past entries alone, which then count toward it in Trends. After the
+  update, a card on Today shows how many foods are left to review and opens
+  the list; it counts down as she goes, retires for good at zero, and can be
+  dismissed for good. Clearing the tags a meal kept stays her call, in the
+  meal's edit sheet.
 - **Solids:** every food entry records who ate it, the parent (through breast
   milk) or the baby directly. The `+ food` sheet opens with a two-way toggle
   at the top, defaulting to the parent and naming the baby; the meal library
@@ -150,8 +154,9 @@ then show "A new version is ready" with a Reload button. Releases are tagged.
   parentheses), each distinct food once and marked to review. A meal that was
   one food handed it its allergens; a meal of several keeps its own, since
   which food held them isn't knowable. Entries keep their name and tags, and
-  one whose name exactly matches a saved meal gains `items` linking it to
-  that meal's foods; the rest stay older entries. Before the first save in a
+  one whose name matches a saved meal's, ignoring case and spacing (build 16;
+  build 15 matched exactly), gains `items` linking it to that meal's foods;
+  the rest stay older entries. Before the first save in a
   new version, the diary as it was is kept under `food-diary:state:v<old>:<time>`.
   Other additions are optional fields (symptom sets; `color` and `count` on
   stool entries, a missing count meaning one; `who` on food entries, a missing

@@ -284,6 +284,19 @@ export function findItemByLabel(foodItems, label) {
   return (n && (foodItems || []).find((it) => !it.mergedInto && normName(it.label) === n)) || null;
 }
 
+// Foods still to review: split out of saved meals at the update and not yet
+// looked at, merged away, or hidden.
+export const foodsToReview = (state) => (state.foodItems || []).filter((it) => !it.reviewed && !it.mergedInto && !it.hidden).length;
+
+// The card on Today pointing to them: { count } while any are left, until she
+// dismisses it or the count reaches zero, either of which retires it for good
+// (foodReviewDone).
+export function foodReviewCard(state) {
+  if (state.foodReviewDone) return null;
+  const count = foodsToReview(state);
+  return count ? { count } : null;
+}
+
 // Foods the picker offers without searching: not merged away, not hidden.
 export const pickableItems = (foodItems) => (foodItems || []).filter((it) => !it.mergedInto && !it.hidden);
 
@@ -1176,6 +1189,7 @@ export function freshState() {
     phases: [],
     dismissed: [],      // exposure banner keys ("eventId:tag") the parent closed
     lastBackup: null,   // timestamp of the last export
+    foodReviewDone: false, // the Today card for foods to review: dismissed, or every food reviewed
     backupSnoozed: null, // when the parent last tapped "Later" on the backup reminder
   };
 }
@@ -1186,7 +1200,9 @@ export function freshState() {
 // allergens; a meal of several foods keeps its allergens on the meal, since
 // which food held the egg isn't knowable. Meals become bundles of their foods.
 // Logged entries keep their name, tags, and note untouched; an entry whose
-// name matches a saved meal's name exactly gains a link to that meal's foods,
+// name matches a saved meal's name, ignoring case and spacing (the old app
+// logged "miso soup" against a saved "Miso soup" as the same meal), gains a
+// link to that meal's foods,
 // and the rest stay as older entries.
 export function migrate1to2(s) {
   const strs = (v) => (Array.isArray(v) ? [...new Set(v.filter((x) => typeof x === 'string'))] : []);
@@ -1204,7 +1220,7 @@ export function migrate1to2(s) {
     }
     return it;
   };
-  const byName = new Map();    // exact meal name -> its foods' ids
+  const byName = new Map();    // normalized meal name -> its foods' ids
   const meals = (Array.isArray(s.meals) ? s.meals : []).map((m) => {
     if (!isObj(m) || typeof m.name !== 'string' || !splitMealName(m.name).length) return m;
     const tags = strs(m.tags), uncertain = strs(m.uncertain).filter((t) => !tags.includes(t));
@@ -1220,11 +1236,11 @@ export function migrate1to2(s) {
     } else if (tags.length || uncertain.length) {
       Object.assign(out, { tags, uncertain });
     }
-    if (!byName.has(m.name)) byName.set(m.name, out.items);
+    if (!byName.has(normName(m.name))) byName.set(normName(m.name), out.items);
     return out;
   });
   const foodLog = (Array.isArray(s.foodLog) ? s.foodLog : []).map((e) =>
-    (isObj(e) && typeof e.name === 'string' && byName.has(e.name) && !Array.isArray(e.items) ? { ...e, items: [...byName.get(e.name)] } : e));
+    (isObj(e) && typeof e.name === 'string' && byName.has(normName(e.name)) && !Array.isArray(e.items) ? { ...e, items: [...byName.get(normName(e.name))] } : e));
   return { ...s, foodItems: [...(Array.isArray(s.foodItems) ? s.foodItems : []), ...byLabel.values()], meals, foodLog };
 }
 
@@ -1271,6 +1287,7 @@ export function normalizeState(s) {
   }
   if (typeof out.babyName !== 'string') out.babyName = '';
   if (out.lastBackup != null && !isTs(out.lastBackup)) out.lastBackup = null;
+  out.foodReviewDone = out.foodReviewDone === true;
   if (out.backupSnoozed != null && !isTs(out.backupSnoozed)) out.backupSnoozed = null;
   // A diary that already holds entries has clearly been set up.
   out.onboarded = out.onboarded === true ||
