@@ -33,6 +33,14 @@ own files so it works offline; the diary itself lives only in localStorage.
   rename, change, or remove it; logged entries never change. Tap an entry to
   edit or delete it; arrows, the date, or a swipe change the day. Every
   entry's time can be backdated.
+- **Symptoms:** crying, spit-up, stool, gas, skin, breathing, and other. Gas
+  (bloating, straining, painful wind) has its own 1 to 3 anchors; it counts
+  toward suspects like any symptom but stays out of the 0 to 20 load, which
+  keeps its five clinical categories. A stool entry can stand for several
+  alike diapers (a count, default one), and the glance card and daily numbers
+  show the day's stools. A stool can also carry an optional color. Color adds
+  no points (green is common and normal); red, black, and pale each show a
+  calm call-your-pediatrician note. Sets remember the color but not the count.
 - **Solids:** every food entry records who ate it, the parent (through breast
   milk) or the baby directly. The `+ food` sheet opens with a two-way toggle
   at the top, defaulting to the parent and naming the baby; the meal library
@@ -43,11 +51,19 @@ own files so it works offline; the diary itself lives only in localStorage.
   the baby has eaten anything: food reaching the baby through breast milk uses
   the suspects window (default 24h), the baby's own food a faster one (default
   4h, options 1/2/4/8, both editable inline and in More). The same food can
-  appear under both with different scores. Correlation, not diagnosis.
+  appear under both with different scores. Below the allergens, **Foods
+  you've typed** scores the words in meal names and food notes the same way
+  (same windows, baseline, and ratio), per pathway: lowercased, punctuation
+  and filler words dropped, plurals folded, single words and neighbor pairs.
+  A word needs 3 exposures on 3 separate days, only the top 10 show, and it
+  is labeled exploratory. Symptom notes never count as food, and a food
+  written as left out ("dairy-free", "no cheese") doesn't count as eaten.
+  Correlation, not diagnosis.
 - **Phases:** eliminations and reintroductions. They drive the exposure
   banners on Today and the 72-hour reintroduction watch card.
 - **More > Report:** a print-styled summary for the pediatrician, with a Who
-  column in the log and both suspect pathways. Print (it
+  column in the log (stool counts and colors included), both suspect
+  pathways, and the typed words with their exploratory caveat. Print (it
   works from the Home Screen app), save a PDF from the print preview, or
   **Share as a file** for a printable copy in Files, Mail, or AirDrop.
 - **More > Back up now:** saves the whole diary as a JSON file through the
@@ -61,8 +77,9 @@ own files so it works offline; the diary itself lives only in localStorage.
   the diary after a confirm; both can be undone right after. Only this app's
   backup files are accepted, and damaged entries are left out.
 - **Motion:** controls give a small spring on tap (a calm settle instead, with
-  no bounce, for severity 3, watery stool, and blood), sheets ease in and out,
-  saves draw a check in the toast, day paging slides with the swipe, and the
+  no bounce, for severity 3, watery stool, blood, and red, black, or pale
+  stool), sheets ease in and out, saves draw a check in the toast, day paging
+  slides with the swipe, and the
   Trends line draws in on each range's first view. Personality and motion stay
   away from symptom data: the bowl-and-drop mark settles in food-log toasts and
   on quiet days (a moon late at night, a sun in the morning, a leaf on a past
@@ -78,7 +95,7 @@ own files so it works offline; the diary itself lives only in localStorage.
 | File | What it is |
 | --- | --- |
 | `index.html` | The whole app: markup, styles, UI code |
-| `logic.js` | Pure computation shared by the browser and the tests: time and day math, phases, meals and tags, symptom load, suspects, trends ranges, backups (reading, checking, merging, including symptom sets), the backup reminder, and which mark a quiet day shows |
+| `logic.js` | Pure computation shared by the browser and the tests: time and day math, phases, meals and tags, symptom load and stool counts, suspects (allergen tags and typed words), trends ranges, backups (reading, checking, merging, including symptom sets), the backup reminder, and which mark a quiet day shows |
 | `logic.test.js` | Tests for `logic.js` |
 | `sw.js` | Cache-first service worker for the app shell |
 | `manifest.json` | PWA manifest |
@@ -114,8 +131,9 @@ then show "A new version is ready" with a Reload button. Releases are tagged.
   only touches its own key prefix and its own `food-diary-shell-` caches. Never
   call `localStorage.clear()`; Clear all data removes only `food-diary:` keys.
 - `state.v` is the schema version. Migrations are additive (symptom sets are an
-  extra array; `who` on food entries is an extra field, and a missing one means
-  the parent; older saves simply gain the defaults). A build
+  extra array; `color` and `count` on stool entries are optional fields, and a
+  missing count means one; `who` on food entries is an extra field, and a
+  missing one means the parent; older saves simply gain the defaults). A build
   that finds a newer version refuses to open or write the diary rather than
   guess.
 - Unreadable saved data is set aside under `food-diary:state:unreadable:<time>`

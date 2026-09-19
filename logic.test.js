@@ -246,7 +246,7 @@ test('dayLoad takes the worst per category and counts each flag once a day', () 
     sym('s7', '2026-09-06T00:30', 'resp', 3),
   ];
   const d = L.dayLoad(log, '2026-09-05');
-  assert.deepEqual(d.cats, { crying: 2, spitup: 0, stool: 3, skin: 1, resp: 0 });
+  assert.deepEqual(d.cats, { crying: 2, spitup: 0, stool: 3, skin: 1, resp: 0, gas: 0 });
   assert.deepEqual(d.flags, { blood: true, mucus: true, hives: true });
   assert.equal(d.load, 6 + 5, '"other" does not count toward load');
   assert.equal(L.dayLoad(log, '2026-09-07').load, 0);
@@ -254,6 +254,74 @@ test('dayLoad takes the worst per category and counts each flag once a day', () 
   const worst = ['crying', 'spitup', 'stool', 'skin', 'resp'].map((c, i) =>
     sym(`w${i}`, '2026-09-08T12:00', c, 3, c === 'stool' ? ['blood', 'mucus'] : c === 'skin' ? ['hives'] : []));
   assert.equal(L.dayLoad(worst, '2026-09-08').load, 20, 'maximum is 20');
+});
+
+test('gas is a symptom category, charted per day but not part of the load', () => {
+  assert.ok(L.SYMPTOM_CATS.includes('gas'));
+  assert.ok(!L.LOAD_CATS.includes('gas') && L.DAY_CATS.includes('gas'));
+  assert.equal(L.symptomMissing({ cat: 'gas', severity: null }), 'severity');
+  assert.deepEqual(L.symptomFields({ cat: 'gas', severity: 3, flags: ['blood'], color: 'red', count: 4 }),
+    { cat: 'gas', severity: 3, flags: [], note: '' }, 'no flags, color, or count off a stool');
+  const log = [sym('g1', '2026-09-05T08:00', 'gas', 3), sym('c1', '2026-09-05T09:00', 'crying', 1)];
+  const d = L.dayLoad(log, '2026-09-05');
+  assert.equal(d.cats.gas, 3);
+  assert.equal(d.load, 1, 'gas stays out of the 0 to 20 load');
+  assert.equal(L.eventPoints(log[0]), 3, 'but its points count after a food, like any symptom');
+});
+
+test('stool color: stools only, no points, and a worrying color makes a formed stool loggable', () => {
+  assert.deepEqual(L.symptomFields({ cat: 'stool', consistency: 'loose', color: 'green', flags: [] }),
+    { cat: 'stool', severity: 2, flags: [], note: '', consistency: 'loose', color: 'green' });
+  assert.equal('color' in L.symptomFields({ cat: 'stool', consistency: 'loose', color: 'purple' }), false);
+  assert.equal(L.eventPoints({ cat: 'stool', severity: 2, flags: [], color: 'red' }), 2, 'color adds nothing');
+  assert.equal(L.symptomMissing({ cat: 'stool', consistency: 'formed', flags: [], color: 'green' }), 'formed', 'green is normal');
+  for (const color of L.CAUTION_COLORS) assert.equal(L.symptomMissing({ cat: 'stool', consistency: 'formed', flags: [], color }), '', color);
+  assert.deepEqual(L.CAUTION_COLORS, ['red', 'black', 'pale']);
+  assert.deepEqual(L.setItem({ cat: 'stool', consistency: 'hard', color: 'black', count: 3, flags: [], note: 'x' }),
+    { cat: 'stool', severity: 1, flags: [], consistency: 'hard', color: 'black' }, 'a set keeps the color, not the count or note');
+});
+
+test('stool count: one entry for several diapers, shown in the daily load, scored as that many entries', () => {
+  assert.equal('count' in L.symptomFields({ cat: 'stool', consistency: 'loose', count: 1 }), false, 'one is the default and is left off');
+  assert.equal(L.symptomFields({ cat: 'stool', consistency: 'loose', count: 3 }).count, 3);
+  assert.equal(L.symptomFields({ cat: 'stool', consistency: 'loose', count: 99 }).count, L.MAX_STOOL_COUNT);
+  const log = [
+    sym('a', '2026-09-05T07:00', 'stool', 2, ['mucus'], { consistency: 'loose', count: 3 }),
+    sym('b', '2026-09-05T15:00', 'stool', 3, [], { consistency: 'watery' }),   // from before counts: one
+    sym('c', '2026-09-05T16:00', 'crying', 2, [], { count: 5 }),              // a count means nothing off a stool
+    sym('d', '2026-09-06T08:00', 'stool', 1, [], { consistency: 'hard', count: 2 }),
+  ];
+  const d = L.dayLoad(log, '2026-09-05');
+  assert.equal(d.stools, 4);
+  assert.equal(d.load, 3 + 2 + 1, 'the load still takes the worst stool once; the count shows beside it');
+  assert.deepEqual(L.loadSeries(log, '2026-09-05', '2026-09-07').map((x) => x.stools), [4, 2, 0]);
+  assert.equal(L.eventPoints(log[0]), 9, 'three loose stools with mucus score as three entries would');
+  assert.equal(L.eventPoints(log[2]), 2);
+  assert.equal(L.dayGlance(diary({ symptomLog: log }), '2026-09-05').stools, 4);
+  const range = { from: '2026-09-01T00:00', to: '2026-09-08T00:00', windowHours: 24, now: '2026-09-10T00:00' };
+  const foods = [food('f1', '2026-09-02T06:00', ['egg']), food('f2', '2026-09-04T06:00', ['egg'])];
+  const one = L.suspects(diary({ foodLog: foods, symptomLog: [sym('x', '2026-09-02T09:00', 'stool', 2, [], { consistency: 'loose', count: 3 })] }), range);
+  const three = L.suspects(diary({ foodLog: foods,
+    symptomLog: [7, 8, 9].map((h) => sym(`x${h}`, `2026-09-02T0${h}:30`, 'stool', 2, [], { consistency: 'loose' })) }), range);
+  assert.ok(one.ranked[0].ratio > 0 && near(one.ranked[0].ratio, three.ranked[0].ratio), 'one entry for three diapers scores like three entries');
+});
+
+test('restoring keeps stool colors and counts only where they make sense', () => {
+  const r = L.readBackup(JSON.stringify({ ...L.freshState(), onboarded: true,
+    symptomLog: [
+      sym('a', '2026-09-12T10:00', 'stool', 2, [], { consistency: 'loose', color: 'pale', count: 4 }),
+      sym('b', '2026-09-12T10:00', 'stool', 2, [], { consistency: 'loose', color: '<b>', count: 0 }),
+      sym('c', '2026-09-12T10:00', 'stool', 2, [], { consistency: 'loose', count: 2.5 }),
+      sym('d', '2026-09-12T10:00', 'stool', 2, [], { consistency: 'loose', count: 500 }),
+      sym('e', '2026-09-12T10:00', 'crying', 2, [], { color: 'red', count: 3 }),
+    ],
+    symptomSets: [{ id: 't', name: 'Pale one', items: [{ cat: 'stool', severity: 0, flags: [], consistency: 'formed', color: 'pale', count: 3 }] }],
+  }));
+  assert.deepEqual(r.state.symptomLog.map((e) => [e.id, e.color, e.count]),
+    [['a', 'pale', 4], ['b', undefined, undefined], ['c', undefined, undefined], ['d', undefined, undefined], ['e', undefined, undefined]]);
+  assert.deepEqual(r.state.symptomSets[0].items, [{ cat: 'stool', severity: 0, flags: [], consistency: 'formed', color: 'pale' }],
+    'a formed stool with a pale color is a loggable set item; the count is not kept');
+  assert.equal(r.skipped, 0);
 });
 
 // ---- today -------------------------------------------------------------------
@@ -292,8 +360,8 @@ test('dayGlance counts a day\'s entries and load', () => {
   });
   const g = L.dayGlance(s, '2026-09-12');
   assert.deepEqual({ ...g, phases: g.phases.map((x) => [x.phase.id, x.day]) },
-    { load: 5, entries: 4, food: 2, symptoms: 2, phases: [['p1', 12]] });
-  assert.deepEqual(L.dayGlance(diary(), '2026-09-12'), { load: 0, entries: 0, food: 0, symptoms: 0, phases: [] });
+    { load: 5, stools: 1, entries: 4, food: 2, symptoms: 2, phases: [['p1', 12]] });
+  assert.deepEqual(L.dayGlance(diary(), '2026-09-12'), { load: 0, stools: 0, entries: 0, food: 0, symptoms: 0, phases: [] });
 });
 
 test('dayRest keeps symptom days plain and still, and reads the clock today', () => {
@@ -417,7 +485,7 @@ test('suspects: a single exposure is not enough data yet', () => {
     symptomLog: [sym('s1', '2026-09-05T20:00', 'crying', 2)],
   }), RANGE);
   assert.deepEqual(r.ranked, []);
-  assert.deepEqual(r.notEnough, [{ tag: 'dairy', exposures: 1, possible: 0, watching: 0, complete: 1, weight: 1, followed: 1 }]);
+  assert.deepEqual(r.notEnough, [{ tag: 'dairy', exposures: 1, possible: 0, watching: 0, complete: 1, weight: 1, followed: 1, days: 1, completeDays: 1 }]);
 });
 
 test('suspects: overlapping windows share events, ranked by ratio to baseline', () => {
@@ -584,6 +652,119 @@ test('suspects by pathway: each uses its own window and only its own exposures',
   assert.deepEqual(r.baby.notEnough.map((x) => [x.tag, x.exposures]), [['egg', 1]]);
   const all = L.suspects(s, { ...range, windowHours: 24 });
   assert.equal(all.ranked.find((x) => x.tag === 'dairy').exposures, 4, 'without a pathway, every exposure counts together as before');
+});
+
+// ---- foods you've typed ------------------------------------------------------
+
+const named = (id, ts, name, extra = {}) => ({ ...food(id, ts), name, ...extra });
+
+test('textTerms: lowercase, no punctuation, singular, no filler, words and neighbor pairs', () => {
+  const t = (s) => [...L.textTerms(s)].sort();
+  assert.deepEqual(t("Chicken parm from Anthony's"), ['anthony', 'chicken', 'chicken parm', 'parm']);
+  assert.deepEqual(t('Anthony’s meatballs'), ['anthony', 'anthony meatball', 'meatball'], 'the curly apostrophe iOS types');
+  assert.equal(L.textTerms('Scrambled eggs'), L.textTerms('Scrambled eggs'), 'each distinct text is read once');
+  assert.deepEqual(t('Scrambled EGGS!!'), ['egg', 'scrambled', 'scrambled egg']);
+  assert.deepEqual(t('Crème brûlée'), ['brulee', 'creme', 'creme brulee']);
+  assert.deepEqual(t('2 slices of toast, 1/2 cup berries'), ['berry', 'toast'], 'numbers and amounts go');
+  assert.deepEqual(t(''), []);
+  assert.deepEqual(t(null), []);
+});
+
+test('singular folds common plurals so a food meets itself', () => {
+  const pairs = {
+    eggs: 'egg', berries: 'berry', tomatoes: 'tomato', peaches: 'peach', sandwiches: 'sandwich', dishes: 'dish',
+    cookies: 'cookie', fries: 'fry', oats: 'oat', cheeses: 'cheese', sauces: 'sauce', glasses: 'glass', peas: 'pea',
+    kiwis: 'kiwi', loaves: 'loaf', hummus: 'hummus', couscous: 'couscous', citrus: 'citrus', swiss: 'swiss', gas: 'gas', egg: 'egg',
+  };
+  for (const [many, one] of Object.entries(pairs)) assert.equal(L.singular(many), one, many);
+});
+
+test('textTerms: pairs never cross punctuation or a dropped word, and stopwords never count', () => {
+  const t = (s) => [...L.textTerms(s)].sort();
+  assert.deepEqual(t('Mac and cheese, peanut butter toast'), ['butter', 'butter toast', 'cheese', 'mac', 'peanut', 'peanut butter', 'toast']);
+  assert.deepEqual(t('Leftover lunch: a bowl of the soup with some rice'), ['rice', 'soup']);
+  assert.deepEqual(t('possibly hidden dairy'), ['dairy']);
+  assert.deepEqual(t('Snacks for breakfast'), []);
+  for (const w of ['the', 'with', 'breakfast', 'cup', 'possibly']) assert.ok(L.STOPWORDS.has(w), w);
+});
+
+test('textTerms: food that was left out is not counted as eaten', () => {
+  const t = (s) => [...L.textTerms(s)].sort();
+  assert.deepEqual(t('Dairy-free yogurt'), ['yogurt']);
+  assert.deepEqual(t('Pasta, no cheese'), ['pasta']);
+  assert.deepEqual(t('Burger without the onions'), ['burger']);
+  assert.deepEqual(t('Gluten free bread with oat milk'), ['bread', 'milk', 'oat', 'oat milk']);
+});
+
+test('foodTerms reads the name and the note, each term once, and skips names the app made up', () => {
+  const settings = L.freshState().settings;
+  assert.deepEqual(L.foodTerms(named('f', '2026-09-02T08:00', 'Oatmeal with banana', { note: 'extra banana, cinnamon' }), settings).sort(),
+    ['banana', 'cinnamon', 'oatmeal']);
+  assert.deepEqual(L.foodTerms({ ...food('g', '2026-09-02T08:00', ['dairy'], ['soy']), name: L.autoMealName(settings, ['dairy'], ['soy']) }, settings), [],
+    'an entry logged by allergen alone typed no words');
+  assert.deepEqual(L.foodTerms(named('h', '2026-09-02T08:00', 'Soup', { note: '' }), settings), ['soup']);
+});
+
+test('typed words need three finished exposures on three separate days', () => {
+  const s = diary({
+    foodLog: [
+      named('a1', '2026-09-02T08:00', 'Toast'), named('a2', '2026-09-02T12:00', 'Toast'), named('a3', '2026-09-03T08:00', 'Toast'),   // three, on two days
+      named('b1', '2026-09-02T08:00', 'Kale'), named('b2', '2026-09-04T08:00', 'Kale'), named('b3', '2026-09-09T12:00', 'Kale'),     // the third still inside its window
+      named('c1', '2026-09-02T08:00', 'Rice'), named('c2', '2026-09-04T08:00', 'Rice'), named('c3', '2026-09-06T08:00', 'Rice'),
+    ],
+    symptomLog: [sym('s1', '2026-09-02T10:00', 'crying', 2)],
+  });
+  const range = { from: '2026-09-01T00:00', to: '2026-09-10T00:00', windowHours: 24, now: '2026-09-10T00:00', settings: s.settings };
+  const r = L.termSuspects(s, range);
+  assert.deepEqual(r.ranked.map((x) => x.term), ['rice']);
+  const by = Object.fromEntries(r.notEnough.map((x) => [x.term, [x.exposures, x.days, x.complete, x.completeDays]]));
+  assert.deepEqual(by.toast, [3, 2, 3, 2]);
+  assert.deepEqual(by.kale, [3, 3, 2, 2]);
+  assert.deepEqual(L.termSuspects(diary(), range).ranked, []);
+});
+
+test('typed words: only the top ten by ratio are listed', () => {
+  const words = ['apple', 'bagel', 'carrot', 'date', 'endive', 'fig', 'grape', 'hummus', 'jam', 'kiwi', 'lentil', 'mango'];
+  const foodLog = [];
+  words.forEach((w, i) => [2, 3, 4].forEach((d) => foodLog.push(named(`${w}${d}`, `2026-09-0${d}T${String(i).padStart(2, '0')}:00`, w))));
+  // Only the Sep 4 windows of words eaten from 6:00 on reach this symptom.
+  const s = diary({ foodLog, symptomLog: [sym('s1', '2026-09-05T05:30', 'crying', 2)] });
+  const r = L.termSuspects(s, { from: '2026-09-01T00:00', to: '2026-09-08T00:00', windowHours: 24, now: '2026-09-10T00:00', settings: s.settings });
+  assert.equal(r.ranked.length, 10);
+  assert.equal(r.more, 2);
+  assert.deepEqual(r.ranked.map((x) => x.term), ['grape', 'hummus', 'jam', 'kiwi', 'lentil', 'mango', 'apple', 'bagel', 'carrot', 'date']);
+});
+
+test('typed words are scored per pathway with the same windows, baseline, and ratio as tags', () => {
+  const s = diary({
+    settings: { ...L.freshState().settings, windowHours: 24, directWindowHours: 4 },
+    foodLog: [
+      ...[2, 3, 4].map((d) => ({ ...named(`e${d}`, `2026-09-0${d}T08:00`, 'Scrambled eggs'), tags: ['egg'] })),
+      ...[2, 3, 4].map((d) => named(`b${d}`, `2026-09-0${d}T09:30`, 'Mashed banana', { who: 'baby' })),
+      ...[5, 6, 7].map((d) => named(`r${d}`, `2026-09-0${d}T08:00`, 'Rice', { note: 'no butter' })),
+    ],
+    symptomLog: [2, 3, 4].map((d) => ({ ...sym(`s${d}`, `2026-09-0${d}T10:00`, 'crying', 2), note: "after grandma's lasagna" })),
+  });
+  const range = { from: '2026-09-01T00:00', to: '2026-09-08T00:00', now: '2026-09-10T00:00', settings: s.settings };
+  const words = L.termSuspectsByPathway(s, range);
+  const tags = L.suspectsByPathway(s, range);
+  assert.equal(words.parent.windowHours, 24);
+  assert.equal(words.baby.windowHours, 4);
+  assert.equal(words.parent.baseline, tags.parent.baseline, 'the same baseline as the tags');
+  assert.equal(words.baby.baseline, tags.baby.baseline);
+  const egg = words.parent.ranked.find((x) => x.term === 'egg');
+  const eggTag = tags.parent.ranked.find((x) => x.tag === 'egg');
+  assert.deepEqual([egg.exposures, egg.complete, egg.followed, egg.ratio], [eggTag.exposures, eggTag.complete, eggTag.followed, eggTag.ratio],
+    'a word on the same meals as a tag scores exactly like it, and is listed rather than merged');
+  assert.deepEqual(words.parent.ranked.map((x) => x.term).sort(), ['egg', 'rice', 'scrambled', 'scrambled egg']);
+  assert.deepEqual(words.baby.ranked.map((x) => x.term).sort(), ['banana', 'mashed', 'mashed banana']);
+  const banana = words.baby.ranked.find((x) => x.term === 'banana');
+  assert.equal(banana.followed, 3, 'each inside the 4h window');
+  assert.ok(near(banana.ratio, 2 / ((6 / 144) * 4)));
+  const every = [...words.parent.ranked, ...words.parent.notEnough, ...words.baby.ranked, ...words.baby.notEnough].map((x) => x.term);
+  assert.ok(!every.some((t) => /lasagna|grandma/.test(t)), 'symptom notes never count as food');
+  assert.ok(!every.includes('butter'), '"no butter" was not eaten');
+  assert.ok(![...words.parent.ranked, ...words.parent.notEnough].some((x) => x.term === 'banana'), "the baby's own food stays off the milk's list");
 });
 
 // ---- DST-adjacent days -------------------------------------------------------

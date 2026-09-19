@@ -222,27 +222,40 @@ export function searchMeals(meals, query) {
 
 // ---- symptoms ----------------------------------------------------------------
 
-export const SYMPTOM_CATS = ['crying', 'spitup', 'stool', 'skin', 'resp', 'other'];
+export const SYMPTOM_CATS = ['crying', 'spitup', 'stool', 'gas', 'skin', 'resp', 'other'];
 // The five categories that make up the daily symptom load ("other" is not one).
 export const LOAD_CATS = ['crying', 'spitup', 'stool', 'skin', 'resp'];
+// Categories tracked per day: the load's five, plus gas, which is charted but
+// not counted, so the load keeps its clinical five and its 0 to 20 scale.
+export const DAY_CATS = [...LOAD_CATS, 'gas'];
 export const CAT_FLAGS = { stool: ['mucus', 'blood'], skin: ['hives'] };
 export const FLAG_POINTS = { blood: 2, mucus: 1, hives: 2 };
 // Stool severity comes from consistency. A formed stool is normal, so it can
-// only be logged with a flag; it then has severity 0 and counts its flags.
+// only be logged with a flag or a color worth a call; it then has severity 0
+// and counts its flags.
 export const STOOL_SEVERITY = { formed: 0, hard: 1, loose: 2, watery: 3 };
+// Stool color is descriptive and adds no points (green in particular is common
+// and normal). Red, black, and pale carry a caution note in the sheet.
+export const STOOL_COLORS = ['yellow', 'green', 'brown', 'orange', 'red', 'black', 'pale'];
+export const CAUTION_COLORS = ['red', 'black', 'pale'];
+// One stool entry can stand for several alike diapers. Missing means one.
+export const MAX_STOOL_COUNT = 20;
+export const stoolCount = (e) => (e.cat !== 'stool' ? 0
+  : Number.isInteger(e.count) && e.count >= 1 ? Math.min(e.count, MAX_STOOL_COUNT) : 1);
 
 // What a symptom draft still needs before it can be logged, or '' when ready.
 export function symptomMissing(d) {
   if (!SYMPTOM_CATS.includes(d.cat)) return 'category';
   if (d.cat === 'stool') {
     if (!(d.consistency in STOOL_SEVERITY)) return 'consistency';
-    return d.consistency === 'formed' && !(d.flags || []).length ? 'formed' : '';
+    return d.consistency === 'formed' && !(d.flags || []).length && !CAUTION_COLORS.includes(d.color) ? 'formed' : '';
   }
   return [1, 2, 3].includes(d.severity) ? '' : 'severity';
 }
 
 // Event fields from a ready draft: stool severity derived from consistency,
-// flags limited to the ones the category offers.
+// flags limited to the ones the category offers. A stool keeps a known color
+// and a count above one; both are left off otherwise.
 export function symptomFields(d) {
   const offered = CAT_FLAGS[d.cat] || [];
   const fields = {
@@ -251,21 +264,28 @@ export function symptomFields(d) {
     flags: offered.filter((f) => (d.flags || []).includes(f)),
     note: String(d.note || '').trim(),
   };
-  if (d.cat === 'stool') fields.consistency = d.consistency;
+  if (d.cat === 'stool') {
+    fields.consistency = d.consistency;
+    if (STOOL_COLORS.includes(d.color)) fields.color = d.color;
+    const n = stoolCount({ cat: 'stool', count: d.count });
+    if (n > 1) fields.count = n;
+  }
   return fields;
 }
 
-// A symptom set item from a ready draft: the event fields without the note.
+// A symptom set item from a ready draft: the event fields without the note or
+// the count. How many diapers is a fact about one time, not about the pattern.
 export function setItem(d) {
-  const { note, ...item } = symptomFields(d);
+  const { note, count, ...item } = symptomFields(d);
   return item;
 }
 
-// Points one symptom event adds: its severity plus its flags' points.
+// Points one symptom event adds: its severity plus its flags' points. A stool
+// entry standing for several diapers scores as that many entries would.
 export function eventPoints(e) {
   let points = Number.isFinite(e.severity) ? e.severity : 0;
   for (const f of e.flags || []) points += FLAG_POINTS[f] || 0;
-  return points;
+  return e.cat === 'stool' ? points * stoolCount(e) : points;
 }
 
 // Sorted symptom times with running point totals, so any time window can be
@@ -307,18 +327,22 @@ export function bucketByDay(events) {
 
 // Symptom load for one local day, 0 to 20: for each of the five load
 // categories, the worst severity logged that day, plus 2 if blood appeared,
-// 1 for mucus, and 2 for hives, each counted once per day.
+// 1 for mucus, and 2 for hives, each counted once per day. `cats` also carries
+// gas (charted, not counted), and `stools` is how many stools were logged,
+// counting an entry for several diapers as that many.
 export function dayLoad(symptomLog, day) {
-  const cats = Object.fromEntries(LOAD_CATS.map((c) => [c, 0]));
+  const cats = Object.fromEntries(DAY_CATS.map((c) => [c, 0]));
   const flags = { blood: false, mucus: false, hives: false };
+  let stools = 0;
   for (const e of symptomLog) {
     if (!isTs(e.ts) || dayKey(e.ts) !== day) continue;
     if (e.cat in cats) cats[e.cat] = Math.max(cats[e.cat], Number.isFinite(e.severity) ? e.severity : 0);
     for (const f of e.flags || []) if (f in flags) flags[f] = true;
+    stools += stoolCount(e);
   }
   const load = LOAD_CATS.reduce((sum, c) => sum + cats[c], 0) +
     Object.keys(flags).reduce((sum, f) => sum + (flags[f] ? FLAG_POINTS[f] : 0), 0);
-  return { day, load, cats, flags };
+  return { day, load, cats, flags, stools };
 }
 
 export function loadSeries(symptomLog, fromDay, toDay) {
@@ -351,8 +375,10 @@ export function phasesOnDay(phases, day) {
 export function dayGlance(state, day) {
   const entries = dayEntries(state, day);
   const food = entries.filter((r) => r.kind === 'food').length;
+  const { load, stools } = dayLoad(state.symptomLog, day);
   return {
-    load: dayLoad(state.symptomLog, day).load,
+    load,
+    stools,
     entries: entries.length,
     food,
     symptoms: entries.length - food,
@@ -477,6 +503,37 @@ export function reintroWatches(state, now) {
 // `who` scores one pathway with its own window (see suspectsByPathway); null
 // scores every exposure together.
 export function suspects(state, { from, to, windowHours, now, minWeight = 2, who = null }) {
+  const groups = exposureGroups(state.foodLog, who, tagKeys);
+  return scoreGroups(state, groups, { from, to, windowHours, now, minWeight, who });
+}
+
+// A food event's allergen tags as [tag, possiblyHidden] pairs, each once.
+const tagKeys = (e) => {
+  const tags = [...new Set(e.tags || [])];
+  return [...tags.map((t) => [t, false]), ...[...new Set(e.uncertain || [])].filter((t) => !tags.includes(t)).map((t) => [t, true])];
+};
+
+// Every food event, grouped into exposures by key (a tag, or a typed word),
+// oldest first within each group. keysOf(e) gives [key, possiblyHidden] pairs.
+function exposureGroups(foodLog, who, keysOf) {
+  const groups = new Map();
+  for (const e of foodLog) {
+    if (!isTs(e.ts) || (who && eventWho(e) !== who)) continue;
+    const ms = tsMs(e.ts);
+    for (const [key, uncertain] of keysOf(e)) {
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push({ event: e, ts: e.ts, ms, uncertain, weight: uncertain ? 0.5 : 1, who: eventWho(e) });
+    }
+  }
+  for (const list of groups.values()) list.sort((a, b) => a.ms - b.ms);
+  return groups;
+}
+
+// The suspects math, shared by allergen tags and typed words. Rows carry the
+// key as `tag`. `days` counts the separate days eaten in range; `completeDays`
+// the days among exposures whose window has finished. A row is scored once
+// its finished exposures weigh minWeight and span minDays separate days.
+function scoreGroups(state, groups, { from, to, windowHours, now, minWeight = 2, minDays = 0, who = null }) {
   const nowMs = tsMs(now);
   // A diary younger than the range has no data before its first entry.
   // Counting those empty hours would shrink the baseline and inflate ratios.
@@ -490,17 +547,12 @@ export function suspects(state, { from, to, windowHours, now, minWeight = 2, who
   const hours = (toMs - fromMs) / HOUR;
   const totalPoints = index.between(fromMs - 1, toMs).points;
   const baseline = hours > 0 ? (totalPoints / hours) * windowHours : 0;
-
-  const tagIds = new Set();
-  for (const e of state.foodLog) {
-    if (who && eventWho(e) !== who) continue;
-    for (const t of [...(e.tags || []), ...(e.uncertain || [])]) tagIds.add(t);
-  }
+  const dayCount = (list) => new Set(list.map((x) => dayKey(x.ts))).size;
 
   const ranked = [];
   const notEnough = [];
-  for (const tag of tagIds) {
-    const inRange = exposuresOf(state.foodLog, tag, who).filter((x) => x.ms >= fromMs && x.ms <= toMs);
+  for (const [tag, exposures] of groups) {
+    const inRange = exposures.filter((x) => x.ms >= fromMs && x.ms <= toMs);
     if (!inRange.length) continue;
     const complete = inRange.filter((x) => x.ms + windowMs <= nowMs);
     let weight = 0, weightedPoints = 0, followed = 0;
@@ -513,8 +565,9 @@ export function suspects(state, { from, to, windowHours, now, minWeight = 2, who
     const row = {
       tag, exposures: inRange.length, possible: inRange.filter((x) => x.uncertain).length,
       watching: inRange.length - complete.length, complete: complete.length, weight, followed,
+      days: dayCount(inRange), completeDays: dayCount(complete),
     };
-    if (weight < minWeight) { notEnough.push(row); continue; }
+    if (weight < minWeight || row.completeDays < minDays) { notEnough.push(row); continue; }
     row.meanAfter = weightedPoints / weight;
     row.ratio = baseline > 0 ? row.meanAfter / baseline : null;
     ranked.push(row);
@@ -533,6 +586,122 @@ export function suspectsByPathway(state, { from, to, now, settings, minWeight = 
   return {
     parent: suspects(state, { ...shared, who: 'parent', windowHours: settings.windowHours }),
     baby: suspects(state, { ...shared, who: 'baby', windowHours: settings.directWindowHours }),
+  };
+}
+
+// ---- foods you've typed ------------------------------------------------------
+// Words from meal names and food notes, scored like ad-hoc tags. Symptom notes
+// never enter it. With this many words, some will look guilty by chance, so a
+// word needs TERM_MIN finished exposures on TERM_MIN separate days, and only
+// the top TERM_LIMIT by ratio are shown.
+
+export const TERM_MIN = 3;
+export const TERM_LIMIT = 10;
+
+// Filler that says nothing about what was eaten: grammar, amounts, meal times,
+// and the diary's own words. Checked before and after singularizing.
+export const STOPWORDS = new Set(`
+  a an the and or but nor so yet with w n of on in at to from for by into onto over under out up off
+  about as than then too very also just really only like via per etc amp
+  i me my mine we us our you your he him his she her it its they them their this that these those
+  is are was were be been being am had have has did do does done ate eat eaten eating make made making
+  got get tried try add added ordered order
+  some any few lot bit little more less most much many extra plus half small large big medium regular whole
+  each other another again same one two three
+  breakfast lunch dinner supper brunch snack dessert meal food leftover today tonight yesterday
+  morning afternoon evening night late early
+  cup bowl plate slice piece serving handful glass bottle tbsp tsp oz lb ml spoon spoonful bite side portion
+  possible possibly hidden maybe probably might may contain contained containing trace
+`.split(/\s+/).filter(Boolean));
+
+// The next food word after one of these wasn't eaten ("no cheese"), and nor
+// was the word before "free" ("dairy-free"): in an elimination diary those
+// phrases are everywhere, and counting them would make the food look eaten.
+const NEGATORS = new Set(['no', 'not', 'without', 'sans', 'skip', 'hold']);
+
+const IRREGULAR = {
+  cookies: 'cookie', brownies: 'brownie', smoothies: 'smoothie', veggies: 'veggie', pies: 'pie',
+  loaves: 'loaf', halves: 'half', leaves: 'leaf', molasses: 'molasses',
+};
+
+// Plural to singular, just well enough that "eggs" and "egg" meet.
+export function singular(w) {
+  if (IRREGULAR[w]) return IRREGULAR[w];
+  if (w.length <= 3 || /(ss|us)$/.test(w)) return w;
+  if (/ies$/.test(w) && w.length > 4) return `${w.slice(0, -3)}y`;
+  if (/(oes|sses|ches|shes|xes|zes)$/.test(w)) return w.slice(0, -2);
+  return w.endsWith('s') ? w.slice(0, -1) : w;
+}
+
+// A text's terms: lowercase, no punctuation, singular, no filler; single words
+// plus pairs of neighbors. A pair never spans punctuation or a dropped word,
+// so "chicken parm from Anthony's" gives chicken, parm, anthony, "chicken parm".
+// Meal names repeat all the time, so each distinct text is read once. Callers
+// must treat the returned set as read-only.
+const termCache = new Map();
+export function textTerms(text) {
+  const key = String(text || '');
+  let terms = termCache.get(key);
+  if (!terms) {
+    if (termCache.size >= 5000) termCache.clear();
+    terms = readTerms(key);
+    termCache.set(key, terms);
+  }
+  return terms;
+}
+
+function readTerms(text) {
+  const clean = text.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/['’]s\b/g, '').replace(/['’]/g, '');   // iOS types the curly apostrophe
+  const terms = new Set();
+  for (const phrase of clean.split(/[^a-z0-9\s-]+/)) {
+    const run = [];   // kept words, with null wherever a pair can't cross
+    let negate = false;
+    for (const w of phrase.split(/[\s-]+/)) {
+      if (!w) continue;
+      if (NEGATORS.has(w)) { negate = true; run.push(null); continue; }
+      if (w === 'free') {
+        if (run.length && run[run.length - 1] !== null) run.pop();
+        run.push(null);
+        continue;
+      }
+      const s = singular(w);
+      if (w.length < 2 || /^\d/.test(w) || STOPWORDS.has(w) || STOPWORDS.has(s)) { run.push(null); continue; }
+      if (negate) { negate = false; run.push(null); continue; }
+      run.push(s);
+    }
+    run.forEach((s, i) => {
+      if (s === null) return;
+      terms.add(s);
+      const next = run[i + 1];
+      if (next && next !== s) terms.add(`${s} ${next}`);
+    });
+  }
+  return terms;
+}
+
+// Every term one food entry was logged with, from its name and its note, each
+// once. A name the app made up from the allergens ("Dairy, soy") wasn't typed,
+// so it doesn't count.
+export function foodTerms(e, settings) {
+  const typedName = e.name && e.name !== autoMealName(settings, e.tags || [], e.uncertain || []);
+  return [...new Set([...textTerms(typedName ? e.name : ''), ...textTerms(e.note)])];
+}
+
+// Typed words scored by the suspects engine for one pathway: same window, same
+// baseline, same ratio as the tags. Rows carry `term` instead of `tag`.
+export function termSuspects(state, { from, to, windowHours, now, settings, who = null, limit = TERM_LIMIT }) {
+  const groups = exposureGroups(state.foodLog, who, (e) => foodTerms(e, settings).map((t) => [t, false]));
+  const r = scoreGroups(state, groups, { from, to, windowHours, now, who, minWeight: TERM_MIN, minDays: TERM_MIN });
+  const asTerm = ({ tag, ...row }) => ({ term: tag, ...row });
+  return { ...r, ranked: r.ranked.slice(0, limit).map(asTerm), more: Math.max(0, r.ranked.length - limit), notEnough: r.notEnough.map(asTerm) };
+}
+
+export function termSuspectsByPathway(state, { from, to, now, settings }) {
+  const shared = { from, to, now, settings };
+  return {
+    parent: termSuspects(state, { ...shared, who: 'parent', windowHours: settings.windowHours }),
+    baby: termSuspects(state, { ...shared, who: 'baby', windowHours: settings.directWindowHours }),
   };
 }
 
@@ -719,6 +888,9 @@ export function sanitizeDiary(s) {
   const symptomLog = keep(s.symptomLog, (e) => {
     if (!isTs(e.ts) || !SYMPTOM_CATS.includes(e.cat)) return null;
     const fixed = { ...e, flags: tagList(e.flags).filter((f) => (CAT_FLAGS[e.cat] || []).includes(f)), note: text(e.note) };
+    // Color and count belong to stools; anything unknown or out of range goes.
+    if (e.cat !== 'stool' || !STOOL_COLORS.includes(e.color)) delete fixed.color;
+    if (e.cat !== 'stool' || !(Number.isInteger(e.count) && e.count > 1 && e.count <= MAX_STOOL_COUNT)) delete fixed.count;
     if (e.cat === 'stool' && Object.hasOwn(STOOL_SEVERITY, e.consistency)) {
       fixed.severity = STOOL_SEVERITY[e.consistency];
       return fixed;
@@ -736,7 +908,7 @@ export function sanitizeDiary(s) {
     const items = [];
     for (const it of set.items) {
       if (!isObj(it) || cats.has(it.cat)) continue;
-      const draft = { cat: it.cat, severity: it.severity, consistency: it.consistency, flags: tagList(it.flags) };
+      const draft = { cat: it.cat, severity: it.severity, consistency: it.consistency, color: it.color, flags: tagList(it.flags) };
       if (symptomMissing(draft)) continue;
       cats.add(it.cat);
       items.push(setItem(draft));
@@ -808,7 +980,7 @@ export function freshState() {
     meals: [],
     foodLog: [],
     symptomLog: [],
-    symptomSets: [],    // [{ id, name, items: [{ cat, severity, flags, consistency? }], useCount, lastUsed }]: one tap fills the symptom sheet
+    symptomSets: [],    // [{ id, name, items: [{ cat, severity, flags, consistency?, color? }], useCount, lastUsed }]: one tap fills the symptom sheet
     phases: [],
     dismissed: [],      // exposure banner keys ("eventId:tag") the parent closed
     lastBackup: null,   // timestamp of the last export

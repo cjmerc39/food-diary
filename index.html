@@ -168,7 +168,8 @@ svg{display:block;flex:none}
    with no bounce (see CALM_CONTROLS). Everything stays under about 300ms. */
 .chip,.opt,.cat,.seg button{transition:background-color .18s ease,border-color .18s ease,color .18s ease,transform .12s ease}
 .chip:active,.opt:active,.cat:active,.seg button:active{transform:scale(.96)}
-[data-sev="3"]:active,[data-stool="watery"]:active,[data-flag="blood"]:active{transform:none}
+[data-sev="3"]:active,[data-stool="watery"]:active,[data-flag="blood"]:active,
+[data-color="red"]:active,[data-color="black"]:active,[data-color="pale"]:active{transform:none}
 @keyframes spring{0%{transform:scale(.94);filter:brightness(1.06)}60%{transform:scale(1.03)}100%{transform:none;filter:none}}
 @keyframes settle-calm{from{opacity:.7}to{opacity:1}}
 .spring:not(.switchrow),.switchrow.spring .switch{animation:spring .26s cubic-bezier(.3,.7,.4,1)}
@@ -219,6 +220,7 @@ svg{display:block;flex:none}
 .glance-what{flex:1;min-width:0;font-size:17px}
 .glance-phase > svg{align-self:center;width:20px;height:20px;color:var(--ink3)}
 .glance-stats{display:grid;grid-template-columns:1fr 1.4fr;gap:12px;margin-top:10px;padding-top:12px;border-top:1px solid var(--line)}
+.glance-stats.three{grid-template-columns:1fr .8fr 1.4fr}
 .glance-num{display:block;font:700 26px/1.1 var(--round)}
 .glance-label{display:block;margin-top:2px;color:var(--ink2);font-size:14px}
 .day-rest{flex:1 1 0;min-height:0;overflow:hidden;display:flex;flex-direction:column;
@@ -264,6 +266,10 @@ svg{display:block;flex:none}
 .flag{display:inline-flex;align-items:center;min-height:26px;padding:0 10px;border-radius:999px;
   background:var(--sym-soft);color:var(--sym-ink);font-size:14px;font-weight:600}
 .flag.alert{background:var(--danger-soft);color:var(--danger)}
+/* A stool's color: the swatch shows it, the word names it. The ring keeps black
+   visible on dark and pale visible on light. */
+.cdot{flex:none;display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--sc);box-shadow:inset 0 0 0 1.5px rgba(128,128,128,.55)}
+.flag .cdot{margin-right:6px}
 @media (prefers-reduced-motion: no-preference){
   .dayanim-next{animation:day-next .26s cubic-bezier(.22,1,.36,1)}
   .dayanim-prev{animation:day-prev .26s cubic-bezier(.22,1,.36,1)}
@@ -356,6 +362,7 @@ svg{display:block;flex:none}
   align-items:center;justify-content:center;gap:4px;font-weight:600;font-size:15px}
 .cat svg{width:26px;height:26px}
 .cat[aria-pressed="true"]{background:var(--sym);color:var(--sym-on)}
+.cat[data-cat="other"]{grid-column:1/-1;flex-direction:row;gap:8px;min-height:52px}   /* seven tiles: Other takes the last row */
 .opts{display:grid;gap:8px}
 .opt{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:10px 14px;border-radius:16px;
   background:var(--sunk);text-align:left;font-size:17px}
@@ -367,6 +374,12 @@ svg{display:block;flex:none}
 .opt[aria-checked="true"] .num{background:var(--sym-on);color:var(--sym-ink)}
 .opt[aria-checked="true"] .opt-sub,.opt[aria-checked="true"] .opt-warn{color:var(--sym-on)}
 .flagpick .chip[aria-pressed="true"]{background:var(--sym);border-color:var(--sym);color:var(--sym-on)}
+.colorpick .chip{display:inline-flex;align-items:center;gap:8px;min-height:46px;padding:0 14px 0 12px;font-size:16px}
+.colorpick .chip .cdot{width:16px;height:16px}
+.colorpick .chip[aria-pressed="true"]{background:var(--sym);border-color:var(--sym);color:var(--sym-on)}
+.stepper{display:grid;grid-template-columns:64px 1fr 64px;align-items:center;gap:8px}
+.stepper .btn{min-height:52px;padding:0;font-size:24px}
+.step-num{text-align:center;font:700 26px/1 var(--round);font-variant-numeric:tabular-nums}
 /* several symptoms in one pass: each picked category gets its own section */
 .symset{display:block}
 .symset + .symset{margin-top:22px;padding-top:4px;border-top:1px solid var(--line)}
@@ -438,6 +451,14 @@ svg{display:block;flex:none}
 .suspect-name{flex:1;font:600 19px/1.3 var(--round)}
 .suspect-ratio{font:700 22px/1 var(--round)}
 .suspect-line{margin-top:4px;color:var(--ink2);font-size:15px}
+/* Foods you've typed: secondary to the allergens above, and says so. */
+.typed{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+.typed-title{font:600 17px/1.3 var(--round)}
+.typed .pathway-sub{margin-top:12px;color:var(--ink2);font-size:15px;font-weight:600}
+.typed .suspect{padding:9px 0}
+.typed .suspect-name{font:600 16px/1.3 var(--sans)}
+.typed .suspect-ratio{font:600 17px/1 var(--round);color:var(--ink2)}
+.typed .suspect-line{font-size:14px}
 .caveat{margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--sunk);color:var(--ink);font-weight:600;font-size:15px}
 .more-card{margin-bottom:12px}
 details.more-card > summary{min-height:44px;display:flex;align-items:center;font-weight:600;cursor:pointer;list-style:none}
@@ -488,6 +509,8 @@ details[open].more-card > summary::after{transform:translateY(2px) rotate(-135de
 .report th{padding:6px 12px 6px 0;border-bottom:1px solid var(--ink3);color:var(--ink2);font-weight:600;text-align:left;white-space:nowrap}
 .report td{padding:6px 12px 6px 0;border-bottom:1px solid var(--line);vertical-align:top}
 .report .nowrap{white-space:nowrap}
+.report .typed{margin-top:16px}
+.report .typed-title{margin-top:0;font-size:16px}
 .report-foot{margin-top:28px;padding-top:12px;border-top:1px solid var(--line);color:var(--ink2);font-size:14px}
 .print-hint{margin-top:8px;text-align:center}
 
@@ -623,10 +646,11 @@ import {
   allTags, tagLabel, tagState, cycleTag, sortPhases, isPhaseActive, phaseDay, phasesToClose,
   rankMeals, searchMeals, findMealByName, autoMealName,
   symptomMissing, symptomFields, dayEntries, exposureBanners, pruneDismissed, reintroWatches,
-  standaloneHeight, LOAD_CATS, WINDOW_CHOICES, TREND_RANGES, daysBetween, slugify,
+  standaloneHeight, WINDOW_CHOICES, TREND_RANGES, daysBetween, slugify,
   trendDays, trendSeries, phaseBands, phaseTagSlots, suspects, rangeEntries,
   addCustomTag, tagInUse, mergeStates, readBackup, APP_ID, backupReminder, dayGlance, dayRest, welcomeVariant, setItem,
   eventWho, hasBabyFood, WHO, DIRECT_WINDOW_CHOICES, suspectsByPathway,
+  DAY_CATS, STOOL_COLORS, CAUTION_COLORS, MAX_STOOL_COUNT, stoolCount, termSuspectsByPathway, TERM_MIN, TERM_LIMIT,
 } from './logic.js';
 
 // ---- identity ------------------------------------------------------------------
@@ -635,7 +659,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 13;
+const BUILD = 14;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -718,12 +742,13 @@ const CATS = {
   crying: { label: 'Crying', anchors: ['Fussier than usual', 'One to three hours unexplained', 'Three-plus hours, or inconsolable'] },
   spitup: { label: 'Spit-up', anchors: ['More than usual', 'Frequent large spit-ups', 'Vomiting, or losing most of feeds'] },
   stool: { label: 'Stool' },
+  gas: { label: 'Gas', anchors: ['Gassier than usual', 'Bloated, or straining a lot', 'Painful wind: hard belly, drawn-up legs'] },
   skin: { label: 'Skin', anchors: ['Mild dry patches', 'Clear eczema flare', 'Severe or spreading'] },
   resp: { label: 'Breathing', anchors: ['Congestion', 'Wheeze or persistent cough', 'Labored breathing'] },
   other: { label: 'Other', anchors: ['Mild', 'Moderate', 'Severe'] },
 };
 const STOOLS = [
-  { id: 'formed', label: 'Formed', sub: 'Normal. Only worth logging with mucus or blood.' },
+  { id: 'formed', label: 'Formed', sub: 'Normal. Only worth logging with mucus, blood, or a red, black, or pale color.' },
   { id: 'hard', label: 'Hard' },
   { id: 'loose', label: 'Loose' },
   { id: 'watery', label: 'Watery' },
@@ -731,11 +756,30 @@ const STOOLS = [
 const FLAG_LABELS = { mucus: 'Mucus', blood: 'Blood', hives: 'Hives' };
 const RESP_WARNING = 'Labored breathing is a call-the-doctor-now situation, not a diary entry.';
 const BLOOD_WARNING = 'Blood in stool is worth a call to your pediatrician, not just a diary entry.';
+// Stool color describes, it doesn't score: green in particular is common and
+// normal. Swatches show the color itself, so they stay the same in both themes.
+const COLORS = {
+  yellow: { label: 'Mustard or yellow', short: 'Yellow', hex: '#d6a52c' },
+  green: { label: 'Green', short: 'Green', hex: '#6f8f3a' },
+  brown: { label: 'Brown', short: 'Brown', hex: '#7a5230' },
+  orange: { label: 'Orange', short: 'Orange', hex: '#dc7a2e' },
+  red: { label: 'Red or blood-streaked', short: 'Red', hex: '#b3372c' },
+  black: { label: 'Black', short: 'Black', hex: '#1c1a18' },
+  pale: { label: 'Pale or white', short: 'Pale', hex: '#ece6d6' },
+};
+// The three worth a call, in the same register as the blood and breathing notes.
+const COLOR_WARNINGS = {
+  red: BLOOD_WARNING,
+  black: "Black stool is worth a call to your pediatrician if it isn't from an iron supplement.",
+  pale: 'Pale or white stool is worth a prompt call to your pediatrician, not just a diary entry.',
+};
 
+// "Loose stool", or "3 loose stools" for an entry standing for several diapers.
 function symptomName(e) {
   if (e.cat === 'stool') {
     const s = STOOLS.find((x) => x.id === e.consistency);
-    return s ? `${s.label} stool` : 'Stool';
+    const n = stoolCount(e);
+    return !s ? 'Stool' : n > 1 ? `${n} ${s.label.toLowerCase()} stools` : `${s.label} stool`;
   }
   return CATS[e.cat] ? CATS[e.cat].label : 'Symptom';
 }
@@ -765,6 +809,7 @@ const ICON = {
   spitup: svg('<path d="M12 3.5c3.2 4.2 5.5 7.2 5.5 10.2a5.5 5.5 0 0 1-11 0c0-3 2.3-6 5.5-10.2z"/>'),
   stool: svg('<path d="M3.5 7.5h17v2.5c0 5.2-3.8 9-8.5 9s-8.5-3.8-8.5-9z"/><path d="M3.5 11h3.5M17 11h3.5"/>'),
   skin: svg(`<path d="M6 7c2.8-3 9.2-3 12 0s3 7.5-.5 10.5-8.5 2.5-11.5 0S3.2 10 6 7z"/><circle cx="9.5" cy="10.5" r="1.1" ${DOT}/><circle cx="14.2" cy="9.6" r="1.1" ${DOT}/><circle cx="12.6" cy="14.2" r="1.1" ${DOT}/>`),
+  gas: svg('<circle cx="9" cy="15" r="4.5"/><circle cx="16.5" cy="8.5" r="3"/><circle cx="17.5" cy="16.5" r="1.7"/><circle cx="8.5" cy="5.5" r="1.3"/>'),
   resp: svg('<path d="M3.5 9h10.5a3 3 0 1 0-3-3"/><path d="M3.5 13h14.5a3 3 0 1 1-3 3"/><path d="M3.5 17h5"/>'),
   other: svg('<rect x="5" y="3.5" width="14" height="17" rx="3"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4"/>'),
   trash: svg('<path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/>'),
@@ -1068,12 +1113,17 @@ function glanceHtml(day) {
       <span class="glance-what" aria-hidden="true">${esc(what)}</span>${ICON.right}</button>`;
   }).join('');
   const detail = g.entries ? ` · ${g.food} food, ${plural(g.symptoms, 'symptom')}` : '';
+  // Stools logged (an entry for several diapers counts as that many), once there are any.
+  const stools = g.stools
+    ? `<p class="glance-stat" data-stat="stools"><span class="glance-num">${g.stools}</span><span class="glance-label">${g.stools === 1 ? 'stool' : 'stools'} logged</span></p>`
+    : '';
   return `<section class="card glance" aria-label="${day === todayKey() ? 'Today at a glance' : 'This day at a glance'}">
     <h2 class="glance-name">${esc(S.babyName.trim() || 'Your baby')}</h2>
     ${phases ? `<div class="glance-phases">${phases}</div>` : ''}
-    <div class="glance-stats">
-      <p class="glance-stat"><span class="glance-num">${g.load}</span><span class="glance-label">symptom load</span></p>
-      <p class="glance-stat"><span class="glance-num">${g.entries}</span><span class="glance-label">${g.entries === 1 ? 'entry' : 'entries'}${detail}</span></p>
+    <div class="glance-stats${stools ? ' three' : ''}">
+      <p class="glance-stat" data-stat="load"><span class="glance-num">${g.load}</span><span class="glance-label">symptom load</span></p>
+      ${stools}
+      <p class="glance-stat" data-stat="entries"><span class="glance-num">${g.entries}</span><span class="glance-label">${g.entries === 1 ? 'entry' : 'entries'}${detail}</span></p>
     </div>
   </section>`;
 }
@@ -1147,12 +1197,20 @@ function entryHtml({ kind, e }) {
     ? `<span class="pips" role="img" aria-label="Severity ${sev} of 3">${[1, 2, 3].map((n) => `<span class="pip${n <= sev ? ' on' : ''}"></span>`).join('')}</span>`
     : '';
   const flags = (e.flags || []).map((f) => `<span class="flag${f === 'blood' ? ' alert' : ''}">${esc(FLAG_LABELS[f] || f)}</span>`).join('');
+  const color = colorPillHtml(e);
   return `<li><button class="entry symptom" data-act="edit-symptom" data-id="${esc(e.id)}">
     <span class="entry-ico">${ICON[e.cat] || ICON.other}</span>
     <span class="entry-main">
       <span class="entry-top"><span class="entry-name">${esc(symptomName(e))}</span>${time}</span>
-      ${pips || flags ? `<span class="entry-meta">${pips}${flags}</span>` : ''}${note}
+      ${pips || color || flags ? `<span class="entry-meta">${pips}${color}${flags}</span>` : ''}${note}
     </span></button></li>`;
+}
+
+// A stool's color on the timeline; the three worth a call wear the blood flag's colors.
+function colorPillHtml(e) {
+  const c = e.cat === 'stool' && COLORS[e.color];
+  if (!c) return '';
+  return `<span class="flag${CAUTION_COLORS.includes(e.color) ? ' alert' : ''}" data-color="${e.color}"><i class="cdot" style="--sc:${c.hex}"></i><span class="sr">Color: </span>${c.short}</span>`;
 }
 
 // Exposure banners and reintroduction watch cards, shown on today's page.
@@ -1250,7 +1308,7 @@ function viewTrends() {
     </section>
     <section class="card chart-card">
       <h2 class="chart-title">By category</h2>
-      <p class="fine">The worst severity logged each day, from 0 to 3.</p>
+      <p class="fine">The worst severity logged each day, from 0 to 3. Gas shows here but isn't part of the load.</p>
       ${categoryStripHtml(series)}
     </section>
     ${suspectsCardHtml(fromDay)}
@@ -1260,9 +1318,10 @@ function viewTrends() {
 
 function dailyListHtml(series) {
   const rows = series.filter((d) => d.hasData).reverse().map((d) => {
-    const cats = LOAD_CATS.filter((c) => d.cats[c]).map((c) => `${CATS[c].label.toLowerCase()} ${d.cats[c]}`);
+    const cats = DAY_CATS.filter((c) => d.cats[c]).map((c) => `${CATS[c].label.toLowerCase()} ${d.cats[c]}`);
     const flags = Object.keys(d.flags).filter((f) => d.flags[f]).map((f) => FLAG_LABELS[f].toLowerCase());
-    return `<li><b>${esc(dayShort(d.day))}</b>: load ${d.load}${cats.length ? `, ${cats.join(', ')}` : ''}${flags.length ? ` (${flags.join(', ')})` : ''}</li>`;
+    const stools = d.stools ? `; ${plural(d.stools, 'stool')} logged` : '';
+    return `<li><b>${esc(dayShort(d.day))}</b>: load ${d.load}${cats.length ? `, ${cats.join(', ')}` : ''}${flags.length ? ` (${flags.join(', ')})` : ''}${stools}</li>`;
   }).join('');
   return rows ? `<ul class="plain days">${rows}</ul>` : '<p class="hint">No days logged in this range yet.</p>';
 }
@@ -1323,8 +1382,54 @@ function suspectsCardHtml(fromDay) {
     <p class="fine">For each food, the symptom points in the hours after it was eaten, compared with a usual stretch of the same length in this range. Possibly hidden exposures count half.${solids ? ` Food reaches ${esc(babyLabel())} two ways, so each way is scored on its own; the same food can show up in both.` : ''}</p>
     ${pathwayHtml(r.parent, { titled: solids })}
     ${solids ? pathwayHtml(r.baby, { titled: true }) : ''}
+    ${typedSectionHtml(fromDay, solids)}
     <p class="caveat">Correlation, not diagnosis. Coincidence puts innocent foods here.</p>
   </section>`;
+}
+
+// ---- foods you've typed ---------------------------------------------------------------
+// Words from meal names and food notes, scored per pathway by the same engine,
+// windows, and baseline as the allergens. Exploratory, so it sits below them,
+// quieter, behind a higher bar, and capped.
+const typedData = (fromDay, toTs) =>
+  termSuspectsByPathway(S, { from: `${fromDay}T00:00`, to: toTs, now: nowTs(), settings: S.settings });
+const TYPED_CAVEAT = 'Exploratory. Many words means some will look guilty by chance.';
+const TYPED_ABOUT = `Words from meal names and food notes, scored the same way as the allergens. A word needs ${TERM_MIN} exposures on ${TERM_MIN} different days; the top ${TERM_LIMIT} show.`;
+const termWord = (row) => `“${row.term}”`;
+const typedNone = (hours) => `No typed word has ${TERM_MIN} exposures on ${TERM_MIN} different days with a finished ${hours}h window in this range yet.`;
+
+function termFacts(row, hours) {
+  return [
+    `${plural(row.exposures, 'exposure')} on ${plural(row.days, 'day')}`,
+    `symptoms followed within ${hours}h after ${row.followed} of ${row.complete}`,
+    row.ratio == null ? 'no symptoms logged in this range' : `load after exposure ${fmtRatio(row.ratio)} baseline`,
+    ...(row.watching ? [`${row.watching} still inside the window`] : []),
+  ];
+}
+
+function typedPathwayHtml(r, { titled }) {
+  const hours = r.windowHours;
+  const rows = r.ranked.map((row) => `
+    <div class="suspect">
+      <div class="suspect-top"><span class="suspect-name">${esc(termWord(row))}</span>${row.ratio == null ? '' : `<span class="suspect-ratio">${fmtRatio(row.ratio)}</span>`}</div>
+      <p class="suspect-line">${esc(termFacts(row, hours).join(' · '))}</p>
+    </div>`).join('');
+  return `<div class="typed-pathway" data-who="${r.who}">
+    ${titled ? `<p class="pathway-sub">${esc(PATHWAY_TITLE[r.who]())}, ${hours}h window</p>` : ''}
+    ${rows || `<p class="hint">${esc(typedNone(hours))}</p>`}
+    ${r.more ? `<p class="fine">${plural(r.more, 'more word clears', 'more words clear')} the bar, below the top ${TERM_LIMIT}.</p>` : ''}
+  </div>`;
+}
+
+function typedSectionHtml(fromDay, solids) {
+  const r = typedData(fromDay, nowTs());
+  return `<div class="typed">
+    <h3 class="typed-title">Foods you've typed</h3>
+    <p class="fine typed-caveat">${esc(TYPED_CAVEAT)}</p>
+    <p class="fine">${esc(TYPED_ABOUT)}</p>
+    ${typedPathwayHtml(r.parent, { titled: solids })}
+    ${solids ? typedPathwayHtml(r.baby, { titled: true }) : ''}
+  </div>`;
 }
 
 // ---- charts ------------------------------------------------------------------------------
@@ -1469,7 +1574,7 @@ function categoryStripHtml(series) {
     return `M${round1(x)},${base}V${round1(top + r)}Q${round1(x)},${round1(top)} ${round1(x + r)},${round1(top)}`
       + `H${round1(x + w - r)}Q${round1(x + w)},${round1(top)} ${round1(x + w)},${round1(top + r)}V${base}Z`;
   };
-  return LOAD_CATS.map((c) => {
+  return DAY_CATS.map((c) => {
     const bars = series.map((d, i) => {
       const v = d.hasData ? d.cats[c] : 0;
       if (!v) return '';
@@ -1508,10 +1613,11 @@ function chartTip(svg, index) {
     add('Before the diary began', 'tip-value');
   } else {
     add(`Load ${d.load}`, 'tip-value');
-    const cats = LOAD_CATS.filter((c) => d.cats[c]).map((c) => `${CATS[c].label} ${d.cats[c]}`);
+    const cats = DAY_CATS.filter((c) => d.cats[c]).map((c) => `${CATS[c].label} ${d.cats[c]}`);
     const flags = Object.keys(d.flags).filter((f) => d.flags[f]).map((f) => FLAG_LABELS[f]);
     if (cats.length) add(cats.join(', '));
     if (flags.length) add(flags.join(', '));
+    if (d.stools) add(`${plural(d.stools, 'stool')} logged`);
     if (!cats.length && !flags.length) add('No symptoms logged');
   }
   tip.hidden = false;
@@ -1708,7 +1814,8 @@ function reportControlsHtml() {
 function entryDetail({ kind, e }) {
   if (kind === 'food') return e.note ? `${e.name} (${e.note})` : e.name;
   const sev = Number.isFinite(e.severity) ? e.severity : 0;
-  const bits = [symptomName(e), sev ? `severity ${sev}` : '', ...(e.flags || []).map((f) => (FLAG_LABELS[f] || f).toLowerCase())];
+  const color = e.cat === 'stool' && COLORS[e.color] ? `color: ${COLORS[e.color].label.toLowerCase()}` : '';
+  const bits = [symptomName(e), sev ? `severity ${sev}` : '', color, ...(e.flags || []).map((f) => (FLAG_LABELS[f] || f).toLowerCase())];
   return bits.filter(Boolean).join(', ') + (e.note ? ` (${e.note})` : '');
 }
 
@@ -1726,6 +1833,7 @@ function reportHtml() {
   const series = trendSeries(S, from, to);
   const bands = phaseBands(S.phases, from, to);
   const sus = suspectData(from, `${to}T23:59`);
+  const typed = typedData(from, `${to}T23:59`);
   const solids = hasBabyFood(S);
   const entries = rangeEntries(S, from, to);
   const table = (head, rows, cls = '') => `<div class="table-wrap"><table${cls ? ` class="${cls}"` : ''}>`
@@ -1749,6 +1857,13 @@ function reportHtml() {
       : `<p class="report-meta">No food had two exposures with a finished ${hours}-hour window in this range.</p>`}
       ${few ? `<p class="report-meta">Not enough data yet: ${esc(few)}.</p>` : ''}`;
   };
+  // Foods you've typed, per pathway, under the allergen tables.
+  const typedTable = (r) => {
+    const rows = r.ranked.map((row) => `<tr><td>${esc(termWord(row))}</td><td>${esc(`${plural(row.exposures, 'exposure')} on ${plural(row.days, 'day')}`)}</td>`
+      + `<td class="nowrap">${row.followed} of ${row.complete}</td><td>${row.ratio == null ? 'no symptoms in range' : `${fmtRatio(row.ratio)} baseline`}</td></tr>`).join('');
+    return rows ? table(['Word', 'Exposures', `Followed within ${r.windowHours}h`, 'Load after exposure'], rows)
+      : `<p class="report-meta">${esc(typedNone(r.windowHours))}</p>`;
+  };
   const suspectIntro = solids
     ? `Symptom points in the hours after each food was eaten, compared with a usual stretch of the same length in this range: ${sus.parent.windowHours} hours for food reaching ${esc(name || 'the baby')} through breast milk, ${sus.baby.windowHours} hours for food ${esc(name || 'the baby')} ate directly. The same food can appear under both.`
     : `Symptom points in the ${sus.parent.windowHours} hours after eating each food, compared with a usual ${sus.parent.windowHours}-hour stretch in this range.`;
@@ -1769,7 +1884,7 @@ function reportHtml() {
     </section>
     <section class="keep">
       <h2>Daily symptom load</h2>
-      <p class="report-meta">Each day's total, 0 to 20: the worst severity (0 to 3) in each of crying, spit-up, stool, skin, and breathing, plus 2 for blood, 1 for mucus, and 2 for hives. Shaded bands are phases.</p>
+      <p class="report-meta">Each day's total, 0 to 20: the worst severity (0 to 3) in each of crying, spit-up, stool, skin, and breathing, plus 2 for blood, 1 for mucus, and 2 for hives. Gas is logged but not counted. Shaded bands are phases.</p>
       ${loadChartHtml(series, bands)}
       ${bandLegendHtml(bands)}
     </section>
@@ -1779,6 +1894,14 @@ function reportHtml() {
       ${solids ? `<h3>Via breast milk (${sus.parent.windowHours}h window)</h3>` : ''}
       ${suspectTable(sus.parent)}
       ${solids ? `<h3>${esc(babyLabel())}'s own food (${sus.baby.windowHours}h window)</h3>${suspectTable(sus.baby)}` : ''}
+      <div class="typed">
+        <h3 class="typed-title">Foods you've typed</h3>
+        <p class="report-meta typed-caveat">${esc(TYPED_CAVEAT)}</p>
+        <p class="report-meta">${esc(TYPED_ABOUT)}</p>
+        ${solids ? `<h3>Via breast milk (${typed.parent.windowHours}h window)</h3>` : ''}
+        ${typedTable(typed.parent)}
+        ${solids ? `<h3>${esc(babyLabel())}'s own food (${typed.baby.windowHours}h window)</h3>${typedTable(typed.baby)}` : ''}
+      </div>
       <p class="caveat">Correlation, not diagnosis. Coincidence puts innocent foods here.</p>
     </section>
     <section>
@@ -2570,13 +2693,14 @@ async function deleteEntry(kind, id) {
 // sheet in one tap. Editing an existing event stays one category.
 //
 // Draft: { order: [cat...] in the order picked, items: { cat: { severity,
-// consistency, flags, note } }, when, setId }.
-const blankItem = () => ({ severity: null, consistency: null, flags: [], note: '' });
+// consistency, color, count, flags, note } }, when, setId }. Color and count
+// only mean something on a stool.
+const blankItem = () => ({ severity: null, consistency: null, color: null, count: 1, flags: [], note: '' });
 const itemDraft = (d, c) => ({ cat: c, ...d.items[c] });   // one item, shaped for symptomMissing / symptomFields
 const newSymptomDraft = () => ({ order: [], items: {}, when: defaultWhen(), setId: null });
 const symptomTouched = (d) => d.order.some((c) => {
   const it = d.items[c];
-  return it.severity != null || it.consistency || it.flags.length || it.note.trim();
+  return it.severity != null || it.consistency || it.color || it.count > 1 || it.flags.length || it.note.trim();
 });
 
 function fillFromSet(d, set) {
@@ -2585,7 +2709,7 @@ function fillFromSet(d, set) {
   for (const it of set.items) {
     if (d.items[it.cat]) continue;
     d.order.push(it.cat);
-    d.items[it.cat] = { ...blankItem(), severity: it.cat === 'stool' ? null : it.severity, consistency: it.consistency || null, flags: [...(it.flags || [])] };
+    d.items[it.cat] = { ...blankItem(), severity: it.cat === 'stool' ? null : it.severity, consistency: it.consistency || null, color: it.color || null, flags: [...(it.flags || [])] };
   }
   d.setId = set.id;
 }
@@ -2596,7 +2720,10 @@ function openSymptomSheet(id = null, draft = null) {
   const d = draft || newSymptomDraft();
   if (ev) {
     d.order = [ev.cat];
-    d.items[ev.cat] = { severity: ev.cat === 'stool' ? null : ev.severity, consistency: ev.consistency || null, flags: [...(ev.flags || [])], note: ev.note || '' };
+    d.items[ev.cat] = {
+      ...blankItem(), severity: ev.cat === 'stool' ? null : ev.severity, consistency: ev.consistency || null,
+      color: ev.color || null, count: stoolCount(ev) || 1, flags: [...(ev.flags || [])], note: ev.note || '',
+    };
     d.when = { mode: 'at', ts: ev.ts };
   }
   if (d.setId && !S.symptomSets.some((x) => x.id === d.setId)) d.setId = null;   // back from editing: the set may be gone
@@ -2647,11 +2774,23 @@ function symptomPickActions(d, refresh, { single = false } = {}) {
     },
     sev: (b) => { d.items[b.dataset.cat].severity = +b.dataset.sev; refresh(); },
     stool: (b) => { d.items[b.dataset.cat].consistency = b.dataset.stool; refresh(); },
+    // Optional: tapping the picked color again clears it.
+    color: (b) => {
+      const it = d.items[b.dataset.cat], c = b.dataset.color;
+      it.color = it.color === c ? null : c;
+      refresh();
+      if (CAUTION_COLORS.includes(it.color)) revealInSheet(`[data-symset="${b.dataset.cat}"] [data-caution="color"]`);
+    },
+    count: (b) => {
+      const it = d.items[b.dataset.cat];
+      it.count = Math.max(1, Math.min(MAX_STOOL_COUNT, it.count + +b.dataset.step));
+      refresh();
+    },
     flag: (b) => {
       const it = d.items[b.dataset.cat], f = b.dataset.flag;
       it.flags = it.flags.includes(f) ? it.flags.filter((x) => x !== f) : [...it.flags, f];
       refresh();
-      if (f === 'blood' && it.flags.includes('blood')) revealInSheet(`[data-symset="${b.dataset.cat}"] .caution`);
+      if (f === 'blood' && it.flags.includes('blood')) revealInSheet(`[data-symset="${b.dataset.cat}"] [data-caution="blood"]`);
     },
   };
 }
@@ -2669,9 +2808,11 @@ function symptomBody(d, editing) {
     ${d.order.length ? `<div class="sect"><span class="sect-label">When</span><div data-region="when">${whenHtml(d.when)}</div></div>` : ''}`;
 }
 
-// One picked category: its severity or consistency, flags, and note. Every
-// control carries data-cat so the shared actions know which item it belongs to.
-function symptomSectionHtml(d, c, { titled = false, notes = true } = {}) {
+// One picked category: its severity or consistency, flags, and note; a stool
+// also gets how many diapers and an optional color. Every control carries
+// data-cat so the shared actions know which item it belongs to. Sets keep
+// neither notes nor counts, so the set editor leaves both out.
+function symptomSectionHtml(d, c, { titled = false, notes = true, counts = true } = {}) {
   const it = d.items[c];
   const note = (label, placeholder) => (notes ? `<label class="sect"><span class="sect-label">${label}</span>
     <textarea class="textarea" data-field="note" data-cat="${c}" rows="2" maxlength="500" placeholder="${placeholder}">${esc(it.note)}</textarea></label>` : '');
@@ -2681,6 +2822,18 @@ function symptomSectionHtml(d, c, { titled = false, notes = true } = {}) {
       <button class="opt" role="radio" data-act="stool" data-cat="${c}" data-stool="${s.id}" aria-checked="${it.consistency === s.id}">
         <span class="num">${STOOL_SEVERITY[s.id]}</span><span class="opt-text">${s.label}${s.sub ? `<span class="opt-sub">${s.sub}</span>` : ''}</span></button>`).join('')}
       </div></div>`;
+    if (counts) {
+      html += `<div class="sect"><span class="sect-label">How many diapers</span>
+        <div class="stepper" role="group" aria-label="How many diapers">
+          <button class="btn" data-act="count" data-cat="${c}" data-step="-1" aria-label="One fewer"${it.count <= 1 ? ' disabled' : ''}>−</button>
+          <span class="step-num" aria-live="polite">${it.count}</span>
+          <button class="btn" data-act="count" data-cat="${c}" data-step="1" aria-label="One more"${it.count >= MAX_STOOL_COUNT ? ' disabled' : ''}>+</button>
+        </div></div>`;
+    }
+    html += `<div class="sect"><span class="sect-label">Color, if you noticed</span>
+      <div class="chips colorpick" role="group" aria-label="Color">${STOOL_COLORS.map((k) =>
+        `<button class="chip" data-act="color" data-cat="${c}" data-color="${k}" aria-pressed="${it.color === k}"><i class="cdot" style="--sc:${COLORS[k].hex}"></i>${COLORS[k].label}</button>`).join('')}</div>
+      ${CAUTION_COLORS.includes(it.color) ? `<p class="caution" role="note" data-caution="color">${ICON.alert}<span>${esc(COLOR_WARNINGS[it.color])}</span></p>` : ''}</div>`;
   } else {
     html += `<div class="sect"><span class="sect-label">How bad?</span><div class="opts" role="radiogroup" aria-label="Severity">${[1, 2, 3].map((n) => `
       <button class="opt" role="radio" data-act="sev" data-cat="${c}" data-sev="${n}" aria-checked="${it.severity === n}">
@@ -2690,7 +2843,7 @@ function symptomSectionHtml(d, c, { titled = false, notes = true } = {}) {
   if (CAT_FLAGS[c]) {
     html += `<div class="sect"><span class="sect-label">Also noticed</span>
       <div class="chips flagpick">${CAT_FLAGS[c].map((f) => `<button class="chip" data-act="flag" data-cat="${c}" data-flag="${f}" aria-pressed="${it.flags.includes(f)}">${FLAG_LABELS[f]}</button>`).join('')}</div>
-      ${it.flags.includes('blood') ? `<p class="caution" role="note">${ICON.alert}<span>${BLOOD_WARNING}</span></p>` : ''}</div>`;
+      ${it.flags.includes('blood') && it.color !== 'red' ? `<p class="caution" role="note" data-caution="blood">${ICON.alert}<span>${BLOOD_WARNING}</span></p>` : ''}</div>`;
   }
   if (c !== 'other') html += note('Note', 'Optional');
   return `<section class="symset" data-symset="${c}">${titled ? `<h3 class="symset-title">${ICON[c]}<span>${CATS[c].label}</span></h3>` : ''}${html}</section>`;
@@ -2701,7 +2854,7 @@ const SYMPTOM_HINTS = {
   categories: 'Pick what you noticed, one or several.',
   consistency: 'Pick a consistency.',
   severity: 'Pick how bad it is.',
-  formed: 'A formed stool is normal. Add mucus or blood to log it.',
+  formed: 'A formed stool is normal. Add mucus or blood, or a red, black, or pale color, to log it.',
 };
 
 // Footer state: every picked category has to be complete before Log.
@@ -2730,7 +2883,7 @@ function saveSymptom(d, ev) {
   const c = d.order[0];
   if (!c || symptomMissing(itemDraft(d, c))) return;
   const ts = resolveWhen(d.when);
-  delete ev.consistency;
+  for (const k of ['consistency', 'color', 'count']) delete ev[k];   // symptomFields adds back what still applies
   Object.assign(ev, symptomFields(itemDraft(d, c)), { ts });
   save();
   closeSheet();
@@ -2777,9 +2930,11 @@ function logSymptoms(d) {
 // A set is a remembered pass through the sheet: which categories, how bad,
 // which flags. Logging from one writes plain events; nothing downstream knows
 // sets exist.
-const setIsCalm = (set) => set.items.some((it) => it.severity === 3 || it.consistency === 'watery' || (it.flags || []).includes('blood'));
+const setIsCalm = (set) => set.items.some((it) => it.severity === 3 || it.consistency === 'watery' ||
+  (it.flags || []).includes('blood') || CAUTION_COLORS.includes(it.color));
 const setSummary = (items) => items.map((it) => [
   `${symptomName(it)}${it.cat === 'stool' ? '' : ` ${it.severity}`}`,
+  ...(it.cat === 'stool' && COLORS[it.color] ? [COLORS[it.color].short.toLowerCase()] : []),
   ...(it.flags || []).map((f) => FLAG_LABELS[f].toLowerCase()),
 ].join(', ')).join(' · ');
 const setNameFor = (items) => items.map((it) => symptomName(it)).join(' + ');
@@ -2839,7 +2994,7 @@ function openSetSheet(id, back = null) {
     <label class="sect"><span class="sect-label">Name</span>
       <input class="input" type="text" data-field="name" value="${esc(d.name)}" maxlength="60" autocomplete="off" enterkeyhint="done"></label>
     <div class="sect"><span class="sect-label">Symptoms</span>${catGridHtml(d, 'Symptoms in this set')}</div>
-    ${d.order.map((c) => symptomSectionHtml(d, c, { titled: true, notes: false })).join('')}
+    ${d.order.map((c) => symptomSectionHtml(d, c, { titled: true, notes: false, counts: false })).join('')}
     <p class="fine sect">Used ${plural(set.useCount || 0, 'time')}.</p>`;
   const refresh = () => { fillSheet({ body: body() }); setFoot(state()); };
   closeSheet(true);
@@ -3121,8 +3276,9 @@ async function checkForUpdate() {
 // Taps on choice controls get a small spring. Many taps re-render their sheet,
 // so the spring finds whichever node now carries the tapped control's identity.
 const SPRING_CONTROLS = '.chip, .opt, .cat, .seg button, .switchrow';
-// Anything showing severity 3, or carrying a call-the-doctor note, settles calmly: no bounce.
-const CALM_CONTROLS = '[data-sev="3"], [data-stool="watery"], [data-flag="blood"]';
+// Anything showing severity 3, or carrying a call-the-doctor note (blood, and the
+// red, black, and pale stool colors), settles calmly: no bounce.
+const CALM_CONTROLS = '[data-sev="3"], [data-stool="watery"], [data-flag="blood"], [data-color="red"], [data-color="black"], [data-color="pale"]';
 
 function springKey(el) {
   if (!el.matches(SPRING_CONTROLS)) return null;
@@ -3299,12 +3455,24 @@ function runHold(el) {
   const fn = (sheet && sheet.el.contains(el) && sheet.actions[act]) || ACTIONS[act];
   if (fn) fn(el);
 }
+// Lifting the finger after a hold: cancel the tap it would make, and keep
+// clicks off briefly in case one slips through anyway.
+function endHold(e) {
+  clearTimeout(holdTimer);
+  if (!holdFired) return;
+  holdFired = false;
+  e.preventDefault();
+  suppressClickUntil = Math.max(suppressClickUntil, performance.now() + 400);
+}
 document.addEventListener('touchstart', (e) => {
   clearTimeout(holdTimer);
   holdFired = false;
   const el = e.target.closest('[data-hold]');
   if (!el || e.touches.length !== 1) { holdStart = null; return; }
   holdStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  // A hold usually swaps the sheet, which detaches the element the finger is
+  // on, and its touchend then never reaches document. Listen where it lands.
+  e.target.addEventListener('touchend', endHold, { once: true, passive: false });
   holdTimer = setTimeout(() => runHold(el), 500);
 }, { passive: true });
 document.addEventListener('touchmove', (e) => {
@@ -3312,13 +3480,7 @@ document.addEventListener('touchmove', (e) => {
 }, { passive: true });
 // Releasing a hold would otherwise send a click to whatever the new sheet put
 // under the finger (an allergen chip, Remove). Cancel it at the source.
-document.addEventListener('touchend', (e) => {
-  clearTimeout(holdTimer);
-  if (holdFired) {
-    holdFired = false;
-    e.preventDefault();
-  }
-}, { passive: false });
+document.addEventListener('touchend', endHold, { passive: false });
 document.addEventListener('touchcancel', () => clearTimeout(holdTimer));
 document.addEventListener('contextmenu', (e) => {
   const el = e.target.closest('[data-hold]');
