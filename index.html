@@ -398,6 +398,35 @@ svg{display:block;flex:none}
 .seg button{min-height:52px;border-radius:14px;background:var(--sunk);font-weight:600;font-size:17px}
 .seg button[aria-pressed="true"]{background:var(--primary);color:var(--primary-on)}
 .foot-row{display:grid;grid-template-columns:1fr 2fr;gap:10px}
+/* ---- picking foods -------------------------------------------------------------- */
+.picker .search{margin-top:8px}
+.picked{gap:8px}
+.picked-chip{display:inline-flex;align-items:center;gap:6px;padding:0 12px 0 16px;background:var(--food-soft);border-color:var(--food-soft);color:var(--food-ink)}
+.picked-chip svg{width:16px;height:16px}
+.fresh{margin-top:12px;padding:12px 14px 4px;border-radius:16px;background:var(--sunk)}
+.fresh .chip{background:var(--card)}
+.fresh .chip[aria-pressed="true"]{background:var(--food)}
+.list-label{margin-top:12px;color:var(--ink2);font-size:15px;font-weight:600}
+.item-list{display:grid;gap:6px;margin-top:8px}
+.item-row{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:8px 14px;border-radius:14px;background:var(--sunk);text-align:left}
+.item-row:active{background:var(--line)}
+.item-row svg{width:20px;height:20px;color:var(--food-ink)}
+.item-label{flex:1 1 auto;min-width:0;font-weight:600;overflow-wrap:anywhere}
+.item-tags{flex:none;max-width:45%;color:var(--ink2);font-size:14px;text-align:right}
+.add-row{background:transparent;border:1.5px dashed var(--food);color:var(--food-ink)}
+.meal-row .item-tags{color:var(--food-ink);font-weight:600}
+.allergen-sum{margin-top:18px;color:var(--ink2);font-size:15px}
+.caution-soft{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--sunk);color:var(--ink);font-size:15px}
+.list-lede{margin:-2px 4px 8px}
+/* Picking: while the field has focus the sheet stands tall with the field near
+   the top and the list right under it, above where the keyboard comes up, and
+   everything else steps aside until the keyboard goes away. */
+.sheet.picking{min-height:calc(100% - 44px - env(safe-area-inset-top))}
+.sheet.picking .who-pick,.sheet.picking .meals-block,.sheet.picking .after-foods,.sheet.picking .fresh,
+.sheet.picking .sheet-foot,.sheet.picking .lede,.sheet.picking .sheet-body > .sect:not(.picker){display:none}
+.sheet.picking .picker{margin-top:4px}
+.sheet:not(.picking) .recents,.sheet.picking .pick-hint{display:none}
+.sheet.picking .sheet-body{padding-bottom:45vh}
 .foot-hint{color:var(--ink2);font-size:15px;text-align:center}
 .foot-hint:empty{display:none}
 
@@ -451,14 +480,16 @@ svg{display:block;flex:none}
 .suspect-name{flex:1;font:600 19px/1.3 var(--round)}
 .suspect-ratio{font:700 22px/1 var(--round)}
 .suspect-line{margin-top:4px;color:var(--ink2);font-size:15px}
-/* Foods you've typed: secondary to the allergens above, and says so. */
-.typed{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
-.typed-title{font:600 17px/1.3 var(--round)}
-.typed .pathway-sub{margin-top:12px;color:var(--ink2);font-size:15px;font-weight:600}
-.typed .suspect{padding:9px 0}
-.typed .suspect-name{font:600 16px/1.3 var(--sans)}
-.typed .suspect-ratio{font:600 17px/1 var(--round);color:var(--ink2)}
-.typed .suspect-line{font-size:14px}
+/* Individual foods: secondary to the allergens above, and says so. */
+.indiv{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+.indiv-title{font:600 17px/1.3 var(--round)}
+.indiv .pathway-sub{margin-top:12px;color:var(--ink2);font-size:15px;font-weight:600}
+.indiv .suspect{padding:9px 0}
+.indiv .suspect-name{font:600 16px/1.3 var(--sans)}
+.indiv .suspect-ratio{font:600 17px/1 var(--round);color:var(--ink2)}
+.indiv .suspect-line{font-size:14px}
+.older{margin-top:10px}
+.older-sub{margin:10px 0 2px;color:var(--ink2);font-size:14px;font-style:italic}
 .caveat{margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--sunk);color:var(--ink);font-weight:600;font-size:15px}
 .more-card{margin-bottom:12px}
 details.more-card > summary{min-height:44px;display:flex;align-items:center;font-weight:600;cursor:pointer;list-style:none}
@@ -509,8 +540,8 @@ details[open].more-card > summary::after{transform:translateY(2px) rotate(-135de
 .report th{padding:6px 12px 6px 0;border-bottom:1px solid var(--ink3);color:var(--ink2);font-weight:600;text-align:left;white-space:nowrap}
 .report td{padding:6px 12px 6px 0;border-bottom:1px solid var(--line);vertical-align:top}
 .report .nowrap{white-space:nowrap}
-.report .typed{margin-top:16px}
-.report .typed-title{margin-top:0;font-size:16px}
+.report .indiv{margin-top:16px}
+.report .indiv-title{margin-top:0;font-size:16px}
 .report-foot{margin-top:28px;padding-top:12px;border-top:1px solid var(--line);color:var(--ink2);font-size:14px}
 .print-hint{margin-top:8px;text-align:center}
 
@@ -645,6 +676,7 @@ import {
   toLocalISO, parseLocal, dayKey, addDays, addHours, readState, freshState,
   allTags, tagLabel, tagState, cycleTag, sortPhases, isPhaseActive, phaseDay, phasesToClose,
   rankMeals, searchMeals, findMealByName, autoMealName,
+  hasItems, itemResolver, resolveItems, itemTags, mealTags, findItemByLabel, pickableItems, mergeItem, itemSuspectsByPathway,
   symptomMissing, symptomFields, dayEntries, exposureBanners, pruneDismissed, reintroWatches,
   standaloneHeight, WINDOW_CHOICES, TREND_RANGES, daysBetween, slugify,
   trendDays, trendSeries, phaseBands, phaseTagSlots, suspects, rangeEntries,
@@ -659,7 +691,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 14;
+const BUILD = 15;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -1382,21 +1414,27 @@ function suspectsCardHtml(fromDay) {
     <p class="fine">For each food, the symptom points in the hours after it was eaten, compared with a usual stretch of the same length in this range. Possibly hidden exposures count half.${solids ? ` Food reaches ${esc(babyLabel())} two ways, so each way is scored on its own; the same food can show up in both.` : ''}</p>
     ${pathwayHtml(r.parent, { titled: solids })}
     ${solids ? pathwayHtml(r.baby, { titled: true }) : ''}
-    ${typedSectionHtml(fromDay, solids)}
+    ${indivSectionHtml(fromDay, solids)}
     <p class="caveat">Correlation, not diagnosis. Coincidence puts innocent foods here.</p>
   </section>`;
 }
 
-// ---- foods you've typed ---------------------------------------------------------------
-// Words from meal names and food notes, scored per pathway by the same engine,
-// windows, and baseline as the allergens. Exploratory, so it sits below them,
-// quieter, behind a higher bar, and capped.
-const typedData = (fromDay, toTs) =>
-  termSuspectsByPathway(S, { from: `${fromDay}T00:00`, to: toTs, now: nowTs(), settings: S.settings });
-const TYPED_CAVEAT = 'Exploratory. Many words means some will look guilty by chance.';
-const TYPED_ABOUT = `Words from meal names and food notes, scored the same way as the allergens. A word needs ${TERM_MIN} exposures on ${TERM_MIN} different days; the top ${TERM_LIMIT} show.`;
+// ---- individual foods -----------------------------------------------------------------
+// Picked foods, scored per pathway by the same engine, windows, and baseline as
+// the allergens. Entries from before foods could be picked have no foods; their
+// names are read word by word and shown as their own group, so no entry counts
+// twice. Exploratory either way, so it sits below the allergens, quieter,
+// behind a higher bar, and capped.
+const foodData = (fromDay, toTs) => {
+  const range = { from: `${fromDay}T00:00`, to: toTs, now: nowTs(), settings: S.settings };
+  return { items: itemSuspectsByPathway(S, range), words: termSuspectsByPathway(S, range) };
+};
+const INDIV_CAVEAT = 'Exploratory. Many foods means some will look guilty by chance.';
+const INDIV_ABOUT = `Each food you pick, scored the same way as the allergens. A food needs ${TERM_MIN} exposures on ${TERM_MIN} different days; the top ${TERM_LIMIT} show.`;
+const OLDER_ABOUT = 'Older entries, from before foods were picked, read word by word';
+const foodLabel = (row) => itemResolver(S.foodItems)(row.item)?.label || 'Food';
 const termWord = (row) => `“${row.term}”`;
-const typedNone = (hours) => `No typed word has ${TERM_MIN} exposures on ${TERM_MIN} different days with a finished ${hours}h window in this range yet.`;
+const indivNone = (hours) => `No food has ${TERM_MIN} exposures on ${TERM_MIN} different days with a finished ${hours}h window in this range yet.`;
 
 function termFacts(row, hours) {
   return [
@@ -1407,28 +1445,32 @@ function termFacts(row, hours) {
   ];
 }
 
-function typedPathwayHtml(r, { titled }) {
-  const hours = r.windowHours;
-  const rows = r.ranked.map((row) => `
+const indivRowsHtml = (r, name) => r.ranked.map((row) => `
     <div class="suspect">
-      <div class="suspect-top"><span class="suspect-name">${esc(termWord(row))}</span>${row.ratio == null ? '' : `<span class="suspect-ratio">${fmtRatio(row.ratio)}</span>`}</div>
-      <p class="suspect-line">${esc(termFacts(row, hours).join(' · '))}</p>
+      <div class="suspect-top"><span class="suspect-name">${esc(name(row))}</span>${row.ratio == null ? '' : `<span class="suspect-ratio">${fmtRatio(row.ratio)}</span>`}</div>
+      <p class="suspect-line">${esc(termFacts(row, r.windowHours).join(' · '))}</p>
     </div>`).join('');
-  return `<div class="typed-pathway" data-who="${r.who}">
-    ${titled ? `<p class="pathway-sub">${esc(PATHWAY_TITLE[r.who]())}, ${hours}h window</p>` : ''}
-    ${rows || `<p class="hint">${esc(typedNone(hours))}</p>`}
-    ${r.more ? `<p class="fine">${plural(r.more, 'more word clears', 'more words clear')} the bar, below the top ${TERM_LIMIT}.</p>` : ''}
+const moreHtml = (r, what) => (r.more ? `<p class="fine">${plural(r.more, `more ${what} clears`, `more ${what}s clear`)} the bar, below the top ${TERM_LIMIT}.</p>` : '');
+
+function indivPathwayHtml(ri, rw, { titled }) {
+  const hours = ri.windowHours;
+  const foods = indivRowsHtml(ri, foodLabel);
+  const words = indivRowsHtml(rw, termWord);
+  return `<div class="indiv-pathway" data-who="${ri.who}">
+    ${titled ? `<p class="pathway-sub">${esc(PATHWAY_TITLE[ri.who]())}, ${hours}h window</p>` : ''}
+    ${foods || `<p class="hint">${esc(indivNone(hours))}</p>`}${moreHtml(ri, 'food')}
+    ${words ? `<div class="older" data-who="${rw.who}"><p class="older-sub">${esc(OLDER_ABOUT)}</p>${words}${moreHtml(rw, 'word')}</div>` : ''}
   </div>`;
 }
 
-function typedSectionHtml(fromDay, solids) {
-  const r = typedData(fromDay, nowTs());
-  return `<div class="typed">
-    <h3 class="typed-title">Foods you've typed</h3>
-    <p class="fine typed-caveat">${esc(TYPED_CAVEAT)}</p>
-    <p class="fine">${esc(TYPED_ABOUT)}</p>
-    ${typedPathwayHtml(r.parent, { titled: solids })}
-    ${solids ? typedPathwayHtml(r.baby, { titled: true }) : ''}
+function indivSectionHtml(fromDay, solids) {
+  const { items, words } = foodData(fromDay, nowTs());
+  return `<div class="indiv">
+    <h3 class="indiv-title">Individual foods</h3>
+    <p class="fine indiv-caveat">${esc(INDIV_CAVEAT)}</p>
+    <p class="fine">${esc(INDIV_ABOUT)}</p>
+    ${indivPathwayHtml(items.parent, words.parent, { titled: solids })}
+    ${solids ? indivPathwayHtml(items.baby, words.baby, { titled: true }) : ''}
   </div>`;
 }
 
@@ -1716,6 +1758,7 @@ function viewMore() {
     <h3 class="section-label">Settings</h3>
     <div class="card rows">
       ${row('edit-name', "Baby's name", S.babyName.trim() || 'Not set')}
+      ${row('edit-foods', 'Foods', foodsStatus())}
       ${row('edit-tags', 'Allergen tags', `${tags.length - hidden} shown${hidden ? `, ${hidden} hidden` : ''}`)}
       <div class="row row-block">
         <span class="row-main">Suspects window<span class="row-sub">How many hours after you eat a food count as "followed by symptoms". Through breast milk, reactions can take up to a day.</span></span>
@@ -1733,6 +1776,12 @@ function viewMore() {
     </div>
     <h3 class="section-label">Danger zone</h3>
     <div class="card rows"><button class="row danger" data-act="clear-all"><span class="row-main">Clear all data<span class="row-sub">Deletes this diary from this phone</span></span></button></div>`;
+}
+
+function foodsStatus() {
+  const live = S.foodItems.filter((it) => !it.mergedInto);
+  const review = live.filter((it) => !it.reviewed && !it.hidden).length;
+  return live.length ? `${plural(live.length, 'food')}${review ? `, ${review} to review` : ''}` : 'Added as you log meals';
 }
 
 function backupStatus() {
@@ -1833,7 +1882,7 @@ function reportHtml() {
   const series = trendSeries(S, from, to);
   const bands = phaseBands(S.phases, from, to);
   const sus = suspectData(from, `${to}T23:59`);
-  const typed = typedData(from, `${to}T23:59`);
+  const indiv = foodData(from, `${to}T23:59`);
   const solids = hasBabyFood(S);
   const entries = rangeEntries(S, from, to);
   const table = (head, rows, cls = '') => `<div class="table-wrap"><table${cls ? ` class="${cls}"` : ''}>`
@@ -1857,13 +1906,12 @@ function reportHtml() {
       : `<p class="report-meta">No food had two exposures with a finished ${hours}-hour window in this range.</p>`}
       ${few ? `<p class="report-meta">Not enough data yet: ${esc(few)}.</p>` : ''}`;
   };
-  // Foods you've typed, per pathway, under the allergen tables.
-  const typedTable = (r) => {
-    const rows = r.ranked.map((row) => `<tr><td>${esc(termWord(row))}</td><td>${esc(`${plural(row.exposures, 'exposure')} on ${plural(row.days, 'day')}`)}</td>`
-      + `<td class="nowrap">${row.followed} of ${row.complete}</td><td>${row.ratio == null ? 'no symptoms in range' : `${fmtRatio(row.ratio)} baseline`}</td></tr>`).join('');
-    return rows ? table(['Word', 'Exposures', `Followed within ${r.windowHours}h`, 'Load after exposure'], rows)
-      : `<p class="report-meta">${esc(typedNone(r.windowHours))}</p>`;
-  };
+  // Individual foods per pathway under the allergen tables, older entries' words after them.
+  const indivTable = (r, first, name) => table([first, 'Exposures', `Followed within ${r.windowHours}h`, 'Load after exposure'],
+    r.ranked.map((row) => `<tr><td>${esc(name(row))}</td><td>${esc(`${plural(row.exposures, 'exposure')} on ${plural(row.days, 'day')}`)}</td>`
+      + `<td class="nowrap">${row.followed} of ${row.complete}</td><td>${row.ratio == null ? 'no symptoms in range' : `${fmtRatio(row.ratio)} baseline`}</td></tr>`).join(''));
+  const indivBlock = (ri, rw) => (ri.ranked.length ? indivTable(ri, 'Food', foodLabel) : `<p class="report-meta">${esc(indivNone(ri.windowHours))}</p>`)
+    + (rw.ranked.length ? `<p class="report-meta older-sub">${esc(OLDER_ABOUT)}:</p>${indivTable(rw, 'Word', termWord)}` : '');
   const suspectIntro = solids
     ? `Symptom points in the hours after each food was eaten, compared with a usual stretch of the same length in this range: ${sus.parent.windowHours} hours for food reaching ${esc(name || 'the baby')} through breast milk, ${sus.baby.windowHours} hours for food ${esc(name || 'the baby')} ate directly. The same food can appear under both.`
     : `Symptom points in the ${sus.parent.windowHours} hours after eating each food, compared with a usual ${sus.parent.windowHours}-hour stretch in this range.`;
@@ -1894,13 +1942,13 @@ function reportHtml() {
       ${solids ? `<h3>Via breast milk (${sus.parent.windowHours}h window)</h3>` : ''}
       ${suspectTable(sus.parent)}
       ${solids ? `<h3>${esc(babyLabel())}'s own food (${sus.baby.windowHours}h window)</h3>${suspectTable(sus.baby)}` : ''}
-      <div class="typed">
-        <h3 class="typed-title">Foods you've typed</h3>
-        <p class="report-meta typed-caveat">${esc(TYPED_CAVEAT)}</p>
-        <p class="report-meta">${esc(TYPED_ABOUT)}</p>
-        ${solids ? `<h3>Via breast milk (${typed.parent.windowHours}h window)</h3>` : ''}
-        ${typedTable(typed.parent)}
-        ${solids ? `<h3>${esc(babyLabel())}'s own food (${typed.baby.windowHours}h window)</h3>${typedTable(typed.baby)}` : ''}
+      <div class="indiv">
+        <h3 class="indiv-title">Individual foods</h3>
+        <p class="report-meta indiv-caveat">${esc(INDIV_CAVEAT)}</p>
+        <p class="report-meta">${esc(INDIV_ABOUT)}</p>
+        ${solids ? `<h3>Via breast milk (${indiv.items.parent.windowHours}h window)</h3>` : ''}
+        ${indivBlock(indiv.items.parent, indiv.words.parent)}
+        ${solids ? `<h3>${esc(babyLabel())}'s own food (${indiv.items.baby.windowHours}h window)</h3>${indivBlock(indiv.items.baby, indiv.words.baby)}` : ''}
       </div>
       <p class="caveat">Correlation, not diagnosis. Coincidence puts innocent foods here.</p>
     </section>
@@ -1991,6 +2039,7 @@ function showDiary() {
 
 const diaryCounts = (s) => [plural(s.foodLog.length, 'food entry', 'food entries'), plural(s.symptomLog.length, 'symptom'),
   plural(s.phases.length, 'phase'), plural(s.meals.length, 'saved meal'),
+  ...(s.foodItems.length ? [plural(s.foodItems.filter((it) => !it.mergedInto).length, 'food')] : []),
   ...(s.symptomSets.length ? [plural(s.symptomSets.length, 'symptom set')] : [])].join(', ');
 
 function openImportSheet(incoming, fileName, skipped = 0) {
@@ -2350,34 +2399,38 @@ function whenField(d, input) {
   syncWhen(d.when);
 }
 
-// ---- meal tagging ----------------------------------------------------------------------
-// The one place allergen tags get chosen, for new meals, logged entries, and
-// saved meals alike. A later suggest-tags step can fill the draft before this
-// renders, without touching the sheets that use it.
-function tagPickerHtml(d) {
+// ---- allergen tagging -------------------------------------------------------------------
+// The one place allergen tags get chosen: for a food, a new food being added,
+// or a single logged entry. A later suggest-tags step can fill the draft before
+// this renders, without touching the sheets that use it.
+function tagPickerHtml(d, { act = 'tag', extra = '', hint = true } = {}) {
   const shown = allTags(S.settings).filter((t) => !t.hidden || tagState(d, t.id) !== 'off');
   const chips = shown.map((t) => {
     const st = tagState(d, t.id);
-    return `<button class="chip" data-act="tag" data-tag="${esc(t.id)}" aria-pressed="${st === 'on' ? 'true' : st === 'maybe' ? 'mixed' : 'false'}">${esc(t.label)}</button>`;
+    return `<button class="chip" data-act="${act}" data-tag="${esc(t.id)}"${extra} aria-pressed="${st === 'on' ? 'true' : st === 'maybe' ? 'mixed' : 'false'}">${esc(t.label)}</button>`;
   }).join('');
   return `<div class="chips tagpick">${chips}</div>
-    <p class="hint">Tap once if it's in the meal. Tap again for possibly hidden, like takeout or packaged food.</p>`;
+    ${hint ? '<p class="hint">Tap once if it\'s in it. Tap again for possibly hidden, like takeout or packaged food.</p>' : ''}`;
 }
 
+const pressedFor = (d, id) => { const st = tagState(d, id); return st === 'on' ? 'true' : st === 'maybe' ? 'mixed' : 'false'; };
 const tagAction = (d, after) => (b) => {
   Object.assign(d, cycleTag(d, b.dataset.tag));
-  const st = tagState(d, b.dataset.tag);
-  b.setAttribute('aria-pressed', st === 'on' ? 'true' : st === 'maybe' ? 'mixed' : 'false');
+  b.setAttribute('aria-pressed', pressedFor(d, b.dataset.tag));
   if (after) after();
 };
 
-function mealTagsText(m) {
-  return [...m.tags.map((t) => tagLabel(S.settings, t)), ...m.uncertain.map((t) => `${tagLabel(S.settings, t)}?`)].join(' · ');
-}
+// "Dairy · Wheat · Soy?" for chips and rows; "Dairy, wheat, possibly soy" for sentences.
+const tagsText = (x) => [...(x.tags || []).map((t) => tagLabel(S.settings, t)), ...(x.uncertain || []).map((t) => `${tagLabel(S.settings, t)}?`)].join(' · ');
+const tagsSentence = (x) => [
+  ...(x.tags || []).map((t) => tagLabel(S.settings, t)),
+  ...(x.uncertain || []).map((t) => `possibly ${tagLabel(S.settings, t).toLowerCase()}`),
+].join(', ');
+const mealTagsText = (m) => tagsText(mealTags(S, m));
 
 // ---- who ate it ----------------------------------------------------------------------------
 // The parent's food reaches the baby through breast milk; once solids start,
-// the baby's own food is a second pathway. The meal library is shared.
+// the baby's own food is a second pathway. Meals and foods are shared.
 const babyLabel = () => S.babyName.trim() || 'Baby';
 const whoLabel = (who, { report = false } = {}) => (who === 'baby' ? babyLabel() : report ? 'Parent' : 'Me');
 const whoPickHtml = (d) => `<div class="sect who-pick"><span class="sect-label">Who ate it</span>
@@ -2387,73 +2440,208 @@ const whoPickHtml = (d) => `<div class="sect who-pick"><span class="sect-label">
 const whoAction = (d) => (b) => {
   d.who = b.dataset.who;
   for (const x of sheet.el.querySelectorAll('[data-act="who"]')) x.setAttribute('aria-pressed', x.dataset.who === d.who);
-  if (d.mode === 'pick') patch('results', mealResultsHtml(d));
+  patch('meals-label', mealsLabel(d));
 };
 
-const hasFoodInput = (d) => !!(d.name.trim() || d.tags.length || d.uncertain.length);
-const sameTags = (a, b) => a.tags.length === b.tags.length && a.uncertain.length === b.uncertain.length &&
-  a.tags.every((t) => b.tags.includes(t)) && a.uncertain.every((t) => b.uncertain.includes(t));
-const foodName = (d) => d.name.trim() || autoMealName(S.settings, d.tags, d.uncertain);
+// ---- picking foods ------------------------------------------------------------------------
+// A meal is the foods picked for it. The field filters her food list as she
+// types; with nothing typed, her recent and most-used foods sit ready to tap.
+// Text that matches no food can be added as a new one and tagged right there.
+// New foods join the list only when the meal is logged or saved.
+//   Draft: d.picked = [food id or fresh key], d.fresh = { key: { label, tags, uncertain } }, d.q
+// While the field has focus the sheet stands tall with everything else put
+// aside, so the field sits near the top and the list right under it, above
+// where the phone's keyboard comes up.
+const FRESH = 'new-';
+let freshSeq = 0;
+const isFresh = (id) => id.startsWith(FRESH);
+const pickerDraft = (ids = []) => ({ picked: [...ids], fresh: {}, q: '' });
+const pickedFood = (d, id) => (isFresh(id) ? d.fresh[id] : itemResolver(S.foodItems)(id));
+const pickedFoods = (d) => d.picked.map((id) => pickedFood(d, id)).filter(Boolean);
+const pickedLabels = (d) => pickedFoods(d).map((f) => f.label).join(', ');
+const pickedTags = (d) => itemTags(pickedFoods(d));
+const capital = (s) => s && s[0].toUpperCase() + s.slice(1);
 
-function foodFieldsHtml(d, { withSave = false } = {}) {
-  return `${'who' in d ? whoPickHtml(d) : ''}
-    <label class="sect"><span class="sect-label">Meal</span>
-      <input class="input" type="text" data-field="name" value="${esc(d.name)}" placeholder="What did you eat?" maxlength="80" autocomplete="off" enterkeyhint="done"></label>
-    <div class="sect"><span class="sect-label">Allergens</span><div data-region="tags">${tagPickerHtml(d)}</div></div>
-    ${'note' in d ? `<label class="sect"><span class="sect-label">Note</span>
-      <textarea class="textarea" data-field="note" rows="2" maxlength="500" placeholder="Optional">${esc(d.note)}</textarea></label>` : ''}
-    ${withSave ? `<button class="switchrow" data-act="save-toggle" role="switch" aria-checked="${d.save}"><span>Save to my meals</span><span class="switch" aria-hidden="true"></span></button>` : ''}
-    ${'when' in d ? `<div class="sect"><span class="sect-label">When</span><div data-region="when">${whenHtml(d.when)}</div></div>` : ''}`;
+function pickerHtml(d, { label = 'Foods' } = {}) {
+  return `<div class="sect picker"><span class="sect-label picker-label">${esc(label)}</span>
+    <div data-region="picked">${pickedHtml(d)}</div>
+    <label class="search">${ICON.search}<span class="sr">Find or add a food</span>
+      <input class="input" type="search" data-field="q" value="${esc(d.q)}" placeholder="Find or add a food" autocomplete="off" autocorrect="off" enterkeyhint="done"></label>
+    <div data-region="results">${resultsHtml(d)}</div>
+  </div>`;
 }
 
+function pickedHtml(d) {
+  if (!d.picked.length) return '';
+  const chips = d.picked.map((id) => {
+    const f = pickedFood(d, id);
+    return f ? `<button class="chip picked-chip" data-act="item-remove" data-id="${esc(id)}" aria-label="Remove ${esc(f.label)}">${esc(f.label)}${ICON.close}</button>` : '';
+  }).join('');
+  const fresh = d.picked.filter(isFresh).map((key) => `<div class="fresh" data-fresh-block="${key}">
+      <span class="sect-label">New food: allergens in ${esc(d.fresh[key].label)}</span>
+      ${tagPickerHtml(d.fresh[key], { act: 'fresh-tag', extra: ` data-fresh="${key}"` })}</div>`).join('');
+  return `<div class="chips picked">${chips}</div>${fresh}`;
+}
+
+const foodRow = (it) => `<button class="item-row" data-act="item-pick" data-id="${esc(it.id)}"><span class="item-label">${esc(it.label)}</span>${
+  tagsText(it) ? `<span class="item-tags">${esc(tagsText(it))}</span>` : ''}</button>`;
+
+function resultsHtml(d) {
+  const q = d.q.trim();
+  const resolve = itemResolver(S.foodItems);
+  const taken = new Set(d.picked.map((id) => (isFresh(id) ? id : resolve(id)?.id)));
+  if (!q) {
+    const recent = rankMeals(pickableItems(S.foodItems).filter((it) => !taken.has(it.id)), nowTs(), 8);
+    if (!recent.length) {
+      return `<p class="hint">${S.foodItems.length ? 'Type to find any of your foods.' : 'Type a food to add it. Every food you add is kept for next time.'}</p>`;
+    }
+    // Shown once the field has focus: the sheet stays short enough to sit
+    // within thumb reach until then, and the list lands right under the field.
+    return `<p class="hint pick-hint">Tap the box for your recent foods, or type to find or add one.</p>
+      <div class="recents"><p class="list-label">Recent and frequent</p><div class="item-list">${recent.map(foodRow).join('')}</div></div>`;
+  }
+  // Saved meals match too, so one past the top eight is still one tap away.
+  const meals = d.withMeals ? searchMeals(S.meals, q).slice(0, 2).map((m) =>
+    `<button class="item-row meal-row" data-act="meal-log" data-id="${esc(m.id)}"><span class="item-label">${esc(m.name)}</span><span class="item-tags">Saved meal</span></button>`).join('') : '';
+  const hits = searchMeals(S.foodItems.filter((it) => !it.mergedInto && !taken.has(it.id)), q).slice(0, 6);
+  const exact = findItemByLabel(S.foodItems, q) || Object.values(d.fresh).find((f) => normName(f.label) === normName(q));
+  const add = exact ? '' : `<button class="item-row add-row" data-act="item-new">${ICON.plus}<span class="item-label">Add “${esc(q)}” as a new food</span></button>`;
+  // A new food being added is always in this meal already; a saved one may be.
+  const inMeal = exact && (exact.id ? taken.has(exact.id) : true);
+  const already = inMeal && !hits.length ? '<p class="hint">Already in this meal.</p>' : '';
+  return `<div class="item-list">${meals}${hits.map(foodRow).join('')}${add}</div>${already}`;
+}
+
+// The picker's own buttons. changed() runs after the picked foods change, for
+// the sheet's summary and footer.
+function pickerActions(d, changed) {
+  const refresh = () => {
+    patch('picked', pickedHtml(d));
+    patch('results', resultsHtml(d));
+    changed();
+  };
+  const clearQuery = () => {
+    d.q = '';
+    const f = sheet && sheet.el.querySelector('[data-field="q"]');
+    if (f) f.value = '';
+  };
+  return {
+    'item-pick': (b) => {
+      if (!d.picked.includes(b.dataset.id)) d.picked.push(b.dataset.id);
+      clearQuery();
+      refresh();
+      // Keep the keyboard up for the next food; a tap on a row counts as the gesture.
+      if (sheet.el.classList.contains('picking')) sheet.el.querySelector('[data-field="q"]').focus({ preventScroll: true });
+    },
+    'item-new': () => {
+      const label = capital(d.q.trim().replace(/\s+/g, ' ').slice(0, 80));
+      if (!label) return;
+      const key = `${FRESH}${++freshSeq}`;
+      d.fresh[key] = { label, tags: [], uncertain: [] };
+      d.picked.push(key);
+      clearQuery();
+      endPicking();   // the keyboard goes away so the new food's allergens can be tapped
+      refresh();
+      revealInSheet(`[data-fresh-block="${key}"]`);
+    },
+    'item-remove': (b) => {
+      d.picked = d.picked.filter((id) => id !== b.dataset.id);
+      delete d.fresh[b.dataset.id];
+      refresh();
+    },
+    'fresh-tag': (b) => {
+      const f = d.fresh[b.dataset.fresh];
+      if (!f) return;
+      Object.assign(f, cycleTag(f, b.dataset.tag));
+      b.setAttribute('aria-pressed', pressedFor(f, b.dataset.tag));
+      changed();
+    },
+  };
+}
+
+function endPicking() {
+  if (!sheet) return;
+  sheet.el.querySelector('[data-field="q"]')?.blur();
+  sheet.el.classList.remove('picking');
+}
+
+// Picking mode follows the field's focus. Leaving it waits a moment, because
+// tapping a row blurs the field just before the row puts the focus back.
+document.addEventListener('focusin', (e) => {
+  if (sheet && e.target.matches('.picker [data-field="q"]') && sheet.el.contains(e.target)) sheet.el.classList.add('picking');
+});
+document.addEventListener('focusout', (e) => {
+  if (!sheet || !e.target.matches('.picker [data-field="q"]')) return;
+  const el = sheet.el;
+  setTimeout(() => { if (!el.contains(document.activeElement) || !document.activeElement.matches('[data-field="q"]')) el.classList.remove('picking'); }, 150);
+});
+
+// New foods in a draft join the list, reviewed (she just tagged them); the
+// draft then holds their real ids. Returns the picked foods, each once.
+function commitFoods(d) {
+  d.picked = d.picked.map((id) => {
+    if (!isFresh(id)) return id;
+    const f = d.fresh[id];
+    const same = findItemByLabel(S.foodItems, f.label);
+    if (same) return same.id;
+    const it = { id: newId(), label: f.label, tags: [...f.tags], uncertain: [...f.uncertain], useCount: 0, lastUsed: null, reviewed: true };
+    S.foodItems.push(it);
+    return it.id;
+  });
+  d.fresh = {};
+  return resolveItems(S.foodItems, d.picked);
+}
+
+const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
+const foodIdsOf = (m) => resolveItems(S.foodItems, m.items).map((f) => f.id);
+const snapshotFoods = () => JSON.stringify({ foodItems: S.foodItems, meals: S.meals });
+const allergenLine = (x) => (tagsText(x) ? `Allergens: ${tagsSentence(x)}` : 'No allergens tagged on these foods');
+
 // ---- + food ----------------------------------------------------------------------------
+// Saved meals sit on top for a one-tap repeat. Below them, pick foods; then an
+// optional name, a note, save as a meal, and the time.
 function openFoodSheet(draft = null) {
-  const d = draft || { mode: S.meals.length ? 'pick' : 'new', who: 'parent', q: '', name: '', tags: [], uncertain: [], note: '', save: true, when: defaultWhen() };
-  const view = () => (d.mode === 'pick'
-    ? { body: foodPickBody(d), foot: foodPickFoot(d) }
-    : { body: foodFieldsHtml(d, { withSave: true }), foot: foodNewFoot(d) });
+  const d = draft || { ...pickerDraft(), withMeals: true, who: 'parent', name: '', note: '', save: true, when: defaultWhen() };
+  const changed = () => { patch('after', afterFoodsHtml(d)); setFoot(foodFootState(d)); };
   openSheet({
     title: 'Log food',
-    ...view(),
-    isDirty: () => !!(d.q.trim() || hasFoodInput(d) || d.note.trim()),
+    body: foodSheetBody(d),
+    foot: `<p class="foot-hint">${foodFootState(d).hint}</p>
+      <div class="foot-row"><button class="btn" data-act="close-sheet">Cancel</button>
+      <button class="btn btn-food" data-act="food-log" data-primary${foodFootState(d).disabled ? ' disabled' : ''}>Log food</button></div>`,
+    isDirty: () => !!(d.picked.length || d.q.trim() || d.name.trim() || d.note.trim()),
     actions: {
+      ...pickerActions(d, changed),
       'meal-log': (b) => logMeal(b.dataset.id, d),
       'meal-edit': (b) => openMealSheet(b.dataset.id, () => openFoodSheet(d)),   // comes back with the draft intact
-      'meal-new': () => {
-        d.mode = 'new';
-        if (!d.name.trim()) d.name = d.q.trim();
-        fillSheet(view());
-        if (!d.name) sheet.el.querySelector('[data-field="name"]').focus();
-      },
-      'food-back': () => { d.mode = 'pick'; fillSheet(view()); },
       who: whoAction(d),
-      tag: tagAction(d, () => setFoot(foodNewState(d))),
       'save-toggle': (b) => { d.save = !d.save; b.setAttribute('aria-checked', d.save); },
       when: whenAction(d),
-      'food-log': () => logNewFood(d),
+      'food-log': () => logPicked(d),
     },
     onField: (t, type) => {
       const f = t.dataset.field;
       if (f === 'when') { if (type === 'change') whenField(d, t); return; }
       if (type !== 'input') return;
-      if (f === 'q') { d.q = t.value; patch('results', mealResultsHtml(d)); setFoot({ label: foodPickLabel(d) }); }
-      else if (f === 'name') { d.name = t.value; setFoot(foodNewState(d)); }
+      if (f === 'q') { d.q = t.value; patch('results', resultsHtml(d)); }
+      else if (f === 'name') d.name = t.value;
       else if (f === 'note') d.note = t.value;
     },
   });
-  if (d.mode === 'new') sheet.el.querySelector('[data-field="name"]').focus();
 }
 
-function foodPickBody(d) {
-  return `${whoPickHtml(d)}
-    <label class="search sect">${ICON.search}<span class="sr">Search your meals</span>
-      <input class="input" type="search" data-field="q" value="${esc(d.q)}" placeholder="Search your meals" autocomplete="off" autocorrect="off" enterkeyhint="search"></label>
-    <div data-region="results">${mealResultsHtml(d)}</div>`;
+function foodSheetBody(d) {
+  const meals = S.meals.length ? `<div class="meals-block">
+      <p class="sect sect-label" data-region="meals-label">${mealsLabel(d)}</p>
+      <div class="meal-grid">${rankMeals(S.meals, nowTs(), 6).map(mealChipHtml).join('')}</div>
+      <p class="hint">Press and hold a meal to edit it.</p></div>` : '';
+  return `${whoPickHtml(d)}${meals}${pickerHtml(d, { label: S.meals.length ? 'Or pick foods' : 'Foods' })}
+    <div class="after-foods" data-region="after">${afterFoodsHtml(d)}</div>`;
 }
 
-const foodPickLabel = (d) => (d.q.trim() ? `New meal: ${d.q.trim()}` : 'New meal');
-function foodPickFoot(d) {
-  return `<button class="btn btn-food" data-act="meal-new" data-primary>${ICON.plus}<span class="clip">${esc(foodPickLabel(d))}</span></button>`;
+function mealsLabel(d) {
+  const when = d.when.mode === 'now' ? 'now' : `for ${whenLabel(resolveWhen(d.when))}`;
+  return `Tap a meal to log it ${d.who === 'baby' ? `for ${esc(babyLabel())} ` : ''}${esc(when)}`;
 }
 
 function mealChipHtml(m) {
@@ -2462,40 +2650,30 @@ function mealChipHtml(m) {
     <span class="mc-name">${esc(m.name)}</span>${tags ? `<span class="mc-tags">${esc(tags)}</span>` : ''}</button>`;
 }
 
-function mealResultsHtml(d) {
-  const q = d.q.trim();
-  if (q) {
-    const hits = searchMeals(S.meals, q);
-    return hits.length
-      ? `<p class="sect sect-label">Matching meals</p><div class="meal-grid">${hits.slice(0, 24).map(mealChipHtml).join('')}</div>`
-      : `<p class="hint">No saved meal matches &ldquo;${esc(q)}&rdquo;. Tap New meal below to log it.</p>`;
-  }
-  const when = d.when.mode === 'now' ? 'now' : `for ${whenLabel(resolveWhen(d.when))}`;
-  return `<p class="sect sect-label">Tap a meal to log it ${d.who === 'baby' ? `for ${esc(babyLabel())} ` : ''}${esc(when)}</p>
-    <div class="meal-grid">${rankMeals(S.meals, nowTs()).map(mealChipHtml).join('')}</div>
-    <p class="hint">Press and hold a meal to edit it.</p>`;
+// Once foods are picked: what gets recorded, and the rest of the entry.
+function afterFoodsHtml(d) {
+  if (!d.picked.length) return '';
+  return `<p class="allergen-sum">${esc(allergenLine(pickedTags(d)))}</p>
+    <label class="sect"><span class="sect-label">Meal name</span>
+      <input class="input" type="text" data-field="name" value="${esc(d.name)}" placeholder="${esc(pickedLabels(d))}" maxlength="80" autocomplete="off" enterkeyhint="done"></label>
+    <label class="sect"><span class="sect-label">Note</span>
+      <textarea class="textarea" data-field="note" rows="2" maxlength="500" placeholder="Optional">${esc(d.note)}</textarea></label>
+    <button class="switchrow" data-act="save-toggle" role="switch" aria-checked="${d.save}"><span>Save to my meals</span><span class="switch" aria-hidden="true"></span></button>
+    <div class="sect"><span class="sect-label">When</span><div data-region="when">${whenHtml(d.when)}</div></div>`;
 }
 
-const foodNewState = (d) => ({ hint: hasFoodInput(d) ? '' : 'Name the meal, or tap an allergen.', disabled: !hasFoodInput(d) });
-
-function foodNewFoot(d) {
-  const { hint, disabled } = foodNewState(d);
-  const back = S.meals.length
-    ? '<button class="btn" data-act="food-back">Back</button>'
-    : '<button class="btn" data-act="close-sheet">Cancel</button>';
-  return `<p class="foot-hint">${hint}</p>
-    <div class="foot-row">${back}<button class="btn btn-food" data-act="food-log" data-primary${disabled ? ' disabled' : ''}>Log food</button></div>`;
-}
+const foodFootState = (d) => ({ hint: d.picked.length ? '' : S.meals.length ? 'Tap a meal, or pick foods.' : 'Pick or add a food.', disabled: !d.picked.length });
 
 function logMeal(id, d) {
   const m = S.meals.find((x) => x.id === id);
   if (!m) return;
+  const before = snapshotFoods();
   const ts = resolveWhen(d.when);
-  const before = { useCount: m.useCount, lastUsed: m.lastUsed };
-  const ev = { id: newId(), ts, who: d.who, mealId: m.id, name: m.name, tags: [...m.tags], uncertain: [...m.uncertain], note: '' };
+  const foods = resolveItems(S.foodItems, m.items);
+  const ev = { id: newId(), ts, who: d.who, mealId: m.id, name: m.name, items: foods.map((f) => f.id), ...mealTags(S, m), note: '' };
   S.foodLog.push(ev);
-  m.useCount = (m.useCount || 0) + 1;
-  m.lastUsed = nowTs();
+  const now = nowTs();
+  for (const x of [m, ...foods]) { x.useCount = (x.useCount || 0) + 1; x.lastUsed = now; }
   save();
   closeSheet();
   render();
@@ -2504,62 +2682,59 @@ function logMeal(id, d) {
     icon: 'meal',
     actions: [
       { label: 'Time', fn: () => openTimeSheet(ev.id) },
-      { label: 'Undo', fn: () => undoFood(ev.id, m.id, before, false) },
+      { label: 'Undo', fn: () => undoFood(ev.id, before) },
     ],
   });
 }
 
-// "Dairy, possibly hidden soy", for sentences.
-const tagsSentence = (x) => [
-  ...x.tags.map((t) => tagLabel(S.settings, t)),
-  ...x.uncertain.map((t) => `possibly hidden ${tagLabel(S.settings, t).toLowerCase()}`),
-].join(', ') || 'no allergens';
-
-async function logNewFood(d) {
-  if (!hasFoodInput(d) || d.busy) return;
-  d.busy = true;   // a quick second tap must not log twice while the question is up
-  const name = foodName(d);
-  let meal = null, created = false, before = null, retagged = false;
+// Logs the picked foods. The entry snapshots their allergens now; a saved meal
+// with the same foods is reused rather than doubled.
+async function logPicked(d) {
+  if (!d.picked.length || d.busy) return;
+  d.busy = true;   // a quick second tap must not log twice while a question is up
+  const before = snapshotFoods();
+  const typed = d.name.trim();
+  const foods = commitFoods(d);
+  const ids = foods.map((f) => f.id);
+  const name = typed || foods.map((f) => f.label).join(', ');
+  let meal = null, updated = false;
   if (d.save) {
-    // Logging a name that's already saved reuses that meal rather than adding a twin.
-    meal = findMealByName(S.meals, name);
-    if (meal && !sameTags(meal, d)) {
-      // Different allergens this time. A one-off variation must never quietly
-      // retag every later two-tap log of the meal, so ask, and default to no.
-      retagged = await confirmDialog({
+    meal = typed ? findMealByName(S.meals, typed) : S.meals.find((m) => sameSet(foodIdsOf(m), ids)) || null;
+    if (meal && typed && !sameSet(foodIdsOf(meal), ids)) {
+      // Different foods this time. A one-off variation must never quietly
+      // change every later one-tap log of the meal, so ask, and default to no.
+      updated = await confirmDialog({
         title: `Update your saved ${meal.name}?`,
-        body: `Saved with: ${tagsSentence(meal)}. This time: ${tagsSentence(d)}. Updating changes what future quick logs of it record.`,
+        body: `Saved with: ${resolveItems(S.foodItems, meal.items).map((f) => f.label).join(', ')}. This time: ${foods.map((f) => f.label).join(', ')}. Updating changes what future quick logs of it record.`,
         ok: 'Update saved meal', cancel: 'Just this time',
       });
+      if (updated) meal.items = [...ids];
     }
     if (!meal) {
-      meal = { id: newId(), name, tags: [...d.tags], uncertain: [...d.uncertain], useCount: 0, lastUsed: null };
+      meal = { id: newId(), name, items: [...ids], useCount: 0, lastUsed: null };
       S.meals.push(meal);
-      created = true;
     }
-    before = { useCount: meal.useCount, lastUsed: meal.lastUsed, tags: [...meal.tags], uncertain: [...meal.uncertain] };
-    if (retagged) Object.assign(meal, { tags: [...d.tags], uncertain: [...d.uncertain] });
-    meal.useCount = (meal.useCount || 0) + 1;
-    meal.lastUsed = nowTs();
   }
   const ts = resolveWhen(d.when);
-  const ev = { id: newId(), ts, who: d.who, mealId: meal ? meal.id : null, name, tags: [...d.tags], uncertain: [...d.uncertain], note: d.note.trim() };
+  const ev = { id: newId(), ts, who: d.who, mealId: meal ? meal.id : null, name, items: ids, ...itemTags(foods), note: d.note.trim() };
   S.foodLog.push(ev);
+  const now = nowTs();
+  for (const x of [...(meal ? [meal] : []), ...foods]) { x.useCount = (x.useCount || 0) + 1; x.lastUsed = now; }
   save();
   closeSheet();
   render();
-  toast(`Logged ${name}${d.who === 'baby' ? ` for ${babyLabel()}` : ''}, ${whenLabel(ts)}.${retagged ? ' Saved meal updated.' : ''}`, {
+  toast(`Logged ${name}${d.who === 'baby' ? ` for ${babyLabel()}` : ''}, ${whenLabel(ts)}.${updated ? ' Saved meal updated.' : ''}`, {
     ms: 7000,
     icon: 'meal',
-    actions: [{ label: 'Undo', fn: () => undoFood(ev.id, meal && meal.id, before, created) }],
+    actions: [{ label: 'Undo', fn: () => undoFood(ev.id, before) }],
   });
 }
 
-function undoFood(eventId, mealId, before, createdMeal) {
+// Undo puts the food list and saved meals back as they were, so foods and a
+// meal created by this log go too.
+function undoFood(eventId, before) {
   S.foodLog = S.foodLog.filter((e) => e.id !== eventId);
-  const m = mealId && S.meals.find((x) => x.id === mealId);
-  if (m && createdMeal && !S.foodLog.some((e) => e.mealId === mealId)) S.meals = S.meals.filter((x) => x.id !== mealId);
-  else if (m && before) Object.assign(m, before);
+  Object.assign(S, JSON.parse(before));
   save();
   render();
   toast('Removed.');
@@ -2590,25 +2765,59 @@ function openTimeSheet(id) {
   });
 }
 
+// Editing a logged entry changes that entry only. An entry logged from picked
+// foods can change its foods; its allergens follow them, and can then be set
+// for this entry alone. An older entry keeps its name and tags to edit.
 function openFoodEdit(id) {
   const ev = S.foodLog.find((e) => e.id === id);
   if (!ev) return;
-  const d = { who: eventWho(ev), name: ev.name, tags: [...(ev.tags || [])], uncertain: [...(ev.uncertain || [])], note: ev.note || '', when: { mode: 'at', ts: ev.ts } };
+  const picked = hasItems(ev);
+  const d = {
+    ...pickerDraft(picked ? resolveItems(S.foodItems, ev.items).map((f) => f.id) : []),
+    who: eventWho(ev), name: ev.name, tags: [...(ev.tags || [])], uncertain: [...(ev.uncertain || [])], note: ev.note || '', when: { mode: 'at', ts: ev.ts },
+  };
   const start = JSON.stringify(d);
+  const ok = () => (picked ? d.picked.length > 0 : !!(d.name.trim() || d.tags.length || d.uncertain.length));
+  const state = () => ({ hint: ok() ? '' : picked ? 'Pick at least one food.' : 'Name it, or tap an allergen.', disabled: !ok() });
+  // Changing the foods resets this entry's allergens to theirs.
+  const changed = () => {
+    Object.assign(d, pickedTags(d));
+    patch('entry-tags', tagPickerHtml(d));
+    const name = sheet.el.querySelector('[data-field="name"]');
+    if (name) name.placeholder = pickedLabels(d);
+    setFoot(state());
+  };
+  const body = `${ev.mealId ? '<p class="lede">Changes here affect only this entry, not your saved meal or foods.</p>' : ''}${whoPickHtml(d)}
+    ${picked ? pickerHtml(d) : ''}
+    <div class="after-foods">
+      <label class="sect"><span class="sect-label">${picked ? 'Meal name' : 'Meal'}</span>
+        <input class="input" type="text" data-field="name" value="${esc(d.name)}" placeholder="${esc(picked ? pickedLabels(d) : 'What did you eat?')}" maxlength="80" autocomplete="off" enterkeyhint="done"></label>
+      <div class="sect"><span class="sect-label">Allergens in this entry</span><div data-region="entry-tags">${tagPickerHtml(d)}</div></div>
+      <label class="sect"><span class="sect-label">Note</span>
+        <textarea class="textarea" data-field="note" rows="2" maxlength="500" placeholder="Optional">${esc(d.note)}</textarea></label>
+      <div class="sect"><span class="sect-label">When</span><div data-region="when">${whenHtml(d.when)}</div></div>
+    </div>`;
   openSheet({
     title: 'Edit food',
-    body: `${ev.mealId ? '<p class="lede">Changes here affect only this entry, not your saved meal.</p>' : ''}${foodFieldsHtml(d)}`,
+    body,
     foot: `<p class="foot-hint"></p>
       <div class="foot-row"><button class="btn btn-quiet-danger" data-act="delete">Delete</button>
       <button class="btn btn-food" data-act="save" data-primary>Save</button></div>`,
     isDirty: () => JSON.stringify(d) !== start,
     actions: {
+      ...pickerActions(d, changed),
       who: whoAction(d),
-      tag: tagAction(d, () => setFoot(foodNewState(d))),
+      tag: tagAction(d, () => setFoot(state())),
       when: whenAction(d),
       save: () => {
-        if (!hasFoodInput(d)) return;
-        Object.assign(ev, { who: d.who, name: foodName(d), tags: [...d.tags], uncertain: [...d.uncertain], note: d.note.trim(), ts: resolveWhen(d.when) });
+        if (!ok()) return;
+        const fields = { who: d.who, tags: [...d.tags], uncertain: [...d.uncertain], note: d.note.trim(), ts: resolveWhen(d.when) };
+        if (picked) {
+          const foods = commitFoods(d);
+          Object.assign(ev, fields, { items: foods.map((f) => f.id), name: d.name.trim() || foods.map((f) => f.label).join(', ') });
+        } else {
+          Object.assign(ev, fields, { name: d.name.trim() || autoMealName(S.settings, d.tags, d.uncertain) });
+        }
         save();
         closeSheet();
         render();
@@ -2620,7 +2829,8 @@ function openFoodEdit(id) {
       const f = t.dataset.field;
       if (f === 'when') { if (type === 'change') whenField(d, t); return; }
       if (type !== 'input') return;
-      if (f === 'name') { d.name = t.value; setFoot(foodNewState(d)); }
+      if (f === 'q') { d.q = t.value; patch('results', resultsHtml(d)); }
+      else if (f === 'name') { d.name = t.value; setFoot(state()); }
       else if (f === 'note') d.note = t.value;
     },
   });
@@ -2630,30 +2840,43 @@ function openFoodEdit(id) {
 function openMealSheet(id, back = null) {
   const m = S.meals.find((x) => x.id === id);
   if (!m) return;
-  const d = { name: m.name, tags: [...m.tags], uncertain: [...m.uncertain] };
+  const d = { ...pickerDraft(foodIdsOf(m)), name: m.name, keepOld: !!(m.tags || m.uncertain) };
   const start = JSON.stringify(d);
-  const foot = `<div class="foot-row"><button class="btn btn-quiet-danger" data-act="remove">Remove</button>
-    <button class="btn btn-food" data-act="save" data-primary>Save meal</button></div>`;
+  const carried = { tags: m.tags || [], uncertain: m.uncertain || [] };
+  const state = () => ({ hint: d.picked.length ? '' : 'A saved meal needs at least one food.', disabled: !d.picked.length });
+  const summary = () => {
+    const own = pickedTags(d);
+    return `<p class="allergen-sum">${esc(allergenLine(d.keepOld ? itemTags([own, carried]) : own))}</p>${d.keepOld ? `<div class="card inset sect">
+      <p>Also tagged ${esc(tagsSentence(carried).toLowerCase())} from before this meal was split into foods. Once its foods have their own allergens, these can go.</p>
+      <button class="btn addbtn" data-act="drop-old">Remove these tags</button></div>` : ''}`;
+  };
   closeSheet(true);
   openSheet({
     title: 'Edit saved meal',
     body: `<p class="lede">Changes apply the next time you log it. Past entries keep what they were logged with.</p>
-      ${foodFieldsHtml(d)}
-      <p class="fine sect">Logged ${plural(m.useCount || 0, 'time')}.</p>`,
-    foot,
+      <label class="sect"><span class="sect-label">Name</span>
+        <input class="input" type="text" data-field="name" value="${esc(d.name)}" maxlength="80" autocomplete="off" enterkeyhint="done"></label>
+      ${pickerHtml(d)}
+      <div class="after-foods"><div data-region="meal-sum">${summary()}</div>
+      <p class="fine sect">Logged ${plural(m.useCount || 0, 'time')}.</p></div>`,
+    foot: `<p class="foot-hint"></p><div class="foot-row"><button class="btn btn-quiet-danger" data-act="remove">Remove</button>
+      <button class="btn btn-food" data-act="save" data-primary>Save meal</button></div>`,
     isDirty: () => JSON.stringify(d) !== start,
     actions: {
-      tag: tagAction(d),
+      ...pickerActions(d, () => { patch('meal-sum', summary()); setFoot(state()); }),
+      'drop-old': () => { d.keepOld = false; patch('meal-sum', summary()); },
       save: () => {
-        if (!d.name.trim()) return;
-        Object.assign(m, { name: d.name.trim(), tags: [...d.tags], uncertain: [...d.uncertain] });
+        if (!d.picked.length) return;
+        const foods = commitFoods(d);
+        Object.assign(m, { name: d.name.trim() || foods.map((f) => f.label).join(', '), items: foods.map((f) => f.id) });
+        if (!d.keepOld) { delete m.tags; delete m.uncertain; }
         save();
         closeSheet();
         toast('Meal saved.');
       },
       remove: async () => {
         const ok = await confirmDialog({
-          title: `Remove ${m.name} from your meals?`, body: 'Past entries stay in the diary.',
+          title: `Remove ${m.name} from your meals?`, body: 'Past entries stay in the diary, and its foods stay in your food list.',
           ok: 'Remove', cancel: 'Keep it', danger: true,
         });
         if (!ok) return;
@@ -2664,9 +2887,135 @@ function openMealSheet(id, back = null) {
       },
     },
     onField: (t, type) => {
-      if (t.dataset.field === 'name' && type === 'input') { d.name = t.value; setFoot({ disabled: !d.name.trim() }); }
+      if (type !== 'input') return;
+      if (t.dataset.field === 'name') d.name = t.value;
+      else if (t.dataset.field === 'q') { d.q = t.value; patch('results', resultsHtml(d)); }
     },
     onClosed: back,   // back to the food sheet it was opened from
+  });
+}
+
+// ---- the food list (More) -------------------------------------------------------------------
+// Every food with its allergens and use count, the ones to review first. A
+// food can be renamed, retagged, hidden from the picker, or merged into
+// another. None of it touches past entries.
+const byLabel = (a, b) => a.label.localeCompare(b.label);
+const liveFoods = () => S.foodItems.filter((it) => !it.mergedInto);
+// A food split out of a saved meal at the update: the tags that meal kept,
+// as a hint for tagging the food itself.
+const oldMealTags = (it) => itemTags(S.meals.filter((m) => (m.tags || m.uncertain) && foodIdsOf(m).includes(it.id))
+  .map((m) => ({ tags: m.tags || [], uncertain: m.uncertain || [] })));
+
+function foodListRow(it) {
+  const hint = !it.reviewed ? tagsText(oldMealTags(it)) : '';
+  const sub = [tagsText(it) || 'No allergens', `logged ${plural(it.useCount || 0, 'time')}`, ...(hint ? [`its meal was tagged ${hint}`] : [])].join(' · ');
+  return `<button class="row" data-act="food-item" data-id="${esc(it.id)}"><span class="row-main">${esc(it.label)}<span class="row-sub">${esc(sub)}</span></span>${ICON.right}</button>`;
+}
+
+function foodListHtml() {
+  const live = liveFoods();
+  const review = live.filter((it) => !it.reviewed && !it.hidden).sort(byLabel);
+  const ok = live.filter((it) => it.reviewed && !it.hidden).sort(byLabel);
+  const hidden = live.filter((it) => it.hidden).sort(byLabel);
+  if (!live.length) return '<p class="hint">Foods you add while logging show up here.</p>';
+  const block = (title, list, lede = '') => (list.length ? `<h3 class="section-label">${esc(title)} (${list.length})</h3>${lede}<div class="card rows">${list.map(foodListRow).join('')}</div>` : '');
+  return block('To review', review, '<p class="fine list-lede">These came from your saved meals when foods arrived. Check each one\'s allergens, rename it, or merge it into another.</p>')
+    + block('Your foods', ok) + block('Hidden from the picker', hidden);
+}
+
+function openFoodsSheet() {
+  openSheet({
+    title: 'Foods',
+    body: `<p class="lede">Allergens set here apply the next time a food is logged. Past entries keep what they were logged with.</p>
+      <div data-region="food-list">${foodListHtml()}</div>`,
+    foot: '<button class="btn btn-primary" data-act="close-sheet" data-primary>Done</button>',
+    actions: { 'food-item': (b) => openFoodItemSheet(b.dataset.id) },
+    onClosed: () => render(),
+  });
+}
+
+function openFoodItemSheet(id) {
+  const it = S.foodItems.find((x) => x.id === id);
+  if (!it) return;
+  const d = { label: it.label, tags: [...it.tags], uncertain: [...it.uncertain], shown: !it.hidden };
+  const start = JSON.stringify(d);
+  const old = !it.reviewed ? oldMealTags(it) : { tags: [], uncertain: [] };
+  const problem = () => {
+    const label = d.label.trim();
+    if (!label) return 'Give the food a name.';
+    const same = findItemByLabel(S.foodItems, label);
+    return same && same.id !== it.id ? `${same.label} is already a food. Merge them instead.` : '';
+  };
+  const state = () => ({ hint: problem(), disabled: !!problem() });
+  let leaving = false;
+  closeSheet(true);
+  openSheet({
+    title: 'Edit food',
+    body: `<label class="sect"><span class="sect-label">Name</span>
+        <input class="input" type="text" data-field="label" value="${esc(d.label)}" maxlength="80" autocomplete="off" enterkeyhint="done"></label>
+      <div class="sect"><span class="sect-label">Allergens</span>${tagPickerHtml(d)}</div>
+      ${tagsText(old) ? `<p class="caution-soft">It came from a saved meal tagged ${esc(tagsSentence(old).toLowerCase())}. Tap the ones this food holds.</p>` : ''}
+      <button class="switchrow" data-act="food-shown" role="switch" aria-checked="${d.shown}"><span>Show in the food picker</span><span class="switch" aria-hidden="true"></span></button>
+      <button class="btn addbtn" data-act="food-merge">Merge into another food</button>
+      <p class="fine sect">Logged ${plural(it.useCount || 0, 'time')}. Saving marks it reviewed.</p>`,
+    foot: `<p class="foot-hint">${state().hint}</p><button class="btn btn-primary" data-act="food-save" data-primary${state().disabled ? ' disabled' : ''}>Save</button>`,
+    isDirty: () => !leaving && JSON.stringify(d) !== start,
+    actions: {
+      tag: tagAction(d),
+      'food-shown': (b) => { d.shown = !d.shown; b.setAttribute('aria-checked', d.shown); },
+      'food-merge': () => { leaving = true; openMergeSheet(it.id); },
+      'food-save': () => {
+        if (problem()) return;
+        Object.assign(it, { label: d.label.trim().replace(/\s+/g, ' '), tags: [...d.tags], uncertain: [...d.uncertain], reviewed: true });
+        if (d.shown) delete it.hidden; else it.hidden = true;
+        save();
+        closeSheet();
+        toast(`${it.label} saved.`, { icon: 'check' });
+      },
+    },
+    onField: (t, type) => { if (t.dataset.field === 'label' && type === 'input') { d.label = t.value; setFoot(state()); } },
+    onClosed: () => { if (!leaving) openFoodsSheet(); },
+  });
+}
+
+// Merge: pick the food to keep. Saved meals and future logs use it; past
+// entries keep what they were logged as, and count toward it in Trends.
+function openMergeSheet(fromId) {
+  const from = S.foodItems.find((x) => x.id === fromId);
+  if (!from) return;
+  const d = { q: '' };
+  const rows = () => {
+    const others = liveFoods().filter((it) => it.id !== from.id);
+    const list = d.q.trim() ? searchMeals(others, d.q) : [...others].sort(byLabel);
+    return list.length ? `<div class="item-list">${list.map((it) => `<button class="item-row" data-act="merge-into" data-id="${esc(it.id)}"><span class="item-label">${esc(it.label)}</span>${
+      tagsText(it) ? `<span class="item-tags">${esc(tagsText(it))}</span>` : ''}</button>`).join('')}</div>` : '<p class="hint">No other food matches.</p>';
+  };
+  closeSheet(true);
+  openSheet({
+    title: `Merge ${from.label} into…`,
+    body: `<p class="lede">Pick the food to keep. Saved meals and future logs use it. Past entries keep what they were logged as, and count toward it in Trends.</p>
+      <label class="search sect">${ICON.search}<span class="sr">Find a food</span>
+        <input class="input" type="search" data-field="mq" placeholder="Find a food" autocomplete="off" autocorrect="off" enterkeyhint="done"></label>
+      <div data-region="merge-rows">${rows()}</div>`,
+    foot: '<button class="btn" data-act="close-sheet">Cancel</button>',
+    actions: {
+      'merge-into': async (b) => {
+        const to = S.foodItems.find((x) => x.id === b.dataset.id);
+        if (!to) return;
+        const ok = await confirmDialog({
+          title: `Merge ${from.label} into ${to.label}?`,
+          body: `${to.label} keeps its allergens (${tagsSentence(to).toLowerCase() || 'none'}). ${from.label} leaves the food list; past entries stay as they are.`,
+          ok: 'Merge', cancel: 'Cancel',
+        });
+        if (!ok) return;
+        Object.assign(S, mergeItem(S, from.id, to.id));
+        save();
+        closeSheet();
+        toast(`Merged into ${to.label}.`, { icon: 'check' });
+      },
+    },
+    onField: (t, type) => { if (t.dataset.field === 'mq' && type === 'input') { d.q = t.value; patch('merge-rows', rows()); } },
+    onClosed: () => openFoodsSheet(),
   });
 }
 
@@ -3409,6 +3758,7 @@ const ACTIONS = {
   'import': () => $('#import-file').click(),
   'edit-name': () => openNameSheet(),
   'edit-tags': () => openTagsSheet(),
+  'edit-foods': () => openFoodsSheet(),
   theme: (el) => { setTheme(el.dataset.theme); render(); },
   'clear-all': () => clearAllData(),
   'backup-now': () => exportBackup(),
@@ -3594,7 +3944,15 @@ function boot() {
     notice = "The saved diary couldn't be read, so a copy was set aside and a fresh diary started.";
   } else {
     S = res.state;
-    if (res.migrated) save();
+    if (res.migrated) {
+      // Before the first save in the new shape, keep the diary exactly as it
+      // was, under its own key, in case the update ever needs undoing by hand.
+      try {
+        const aside = `${STORE_KEY}:v${JSON.parse(raw).v}:`;
+        if (!Object.keys(localStorage).some((k) => k.startsWith(aside))) localStorage.setItem(`${aside}${nowTs()}`, raw);
+      } catch {}
+      save();
+    }
   }
   if (S.onboarded) {
     showApp();

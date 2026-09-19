@@ -767,6 +767,218 @@ test('typed words are scored per pathway with the same windows, baseline, and ra
   assert.ok(![...words.parent.ranked, ...words.parent.notEnough].some((x) => x.term === 'banana'), "the baby's own food stays off the milk's list");
 });
 
+// ---- foods (state v2) ----------------------------------------------------------
+
+const v1Diary = () => ({
+  v: 1, onboarded: true, babyName: 'Rowan', settings: { windowHours: 24, directWindowHours: 4, customTags: [], hiddenTags: [] },
+  meals: [
+    { id: 'mk', name: 'Chicken kebabs, toast, mayo, coke zero', tags: [], uncertain: [], useCount: 4, lastUsed: '2026-09-18T15:05' },
+    { id: 'mb', name: 'Eggs, toast w/cream cheese, coffee,', tags: ['egg', 'wheat'], uncertain: ['dairy'], useCount: 3, lastUsed: '2026-09-17T09:00' },
+    { id: 'mp', name: 'Popcorn', tags: ['corn'], uncertain: [], useCount: 2, lastUsed: '2026-09-18T22:22' },
+    { id: 'mr', name: 'Rice, fire roasted veggies (Brussels, bell peppers, mushrooms', tags: [], uncertain: [], useCount: 1, lastUsed: null },
+    { id: 'mt', name: 'TOAST', tags: ['wheat'], uncertain: [], useCount: 1, lastUsed: '2026-09-19T08:00' },
+  ],
+  foodLog: [
+    { ...food('e1', '2026-09-14T13:39'), name: 'Chicken kebabs, toast, mayo, coke zero', mealId: 'mk', note: 'at the park' },
+    { ...food('e2', '2026-09-15T09:00', ['egg', 'wheat'], ['dairy']), name: 'Eggs, toast w/cream cheese, coffee,', mealId: 'mb' },
+    { ...food('e3', '2026-09-16T20:00', ['corn']), name: 'popcorn', mealId: 'mp' },            // case differs: stays an older entry
+    { ...food('e4', '2026-09-16T12:00', ['wheat']), name: 'Sandwich from the deli', mealId: null }, // never saved: an older entry
+  ],
+  symptomLog: [sym('s1', '2026-09-14T18:00', 'crying', 2)],
+  phases: [], dismissed: [], lastBackup: null,
+});
+
+test('migration to v2: saved meals split into foods at their commas, never inside parentheses', () => {
+  const r = L.readState(JSON.stringify(v1Diary()));
+  assert.equal(r.ok, true);
+  assert.equal(r.migrated, true);
+  const s = r.state;
+  assert.equal(s.v, 2);
+  assert.deepEqual(s.foodItems.map((it) => it.label),
+    ['Chicken kebabs', 'Toast', 'Mayo', 'Coke zero', 'Eggs', 'Toast w/cream cheese', 'Coffee', 'Popcorn', 'Rice', 'Fire roasted veggies (Brussels, bell peppers, mushrooms'],
+    'each food once (toast and TOAST are one), capitalized, the unclosed parenthesis kept whole, the trailing comma ignored');
+  assert.ok(s.foodItems.every((it) => it.reviewed === false), 'every food starts unreviewed');
+  const toast = L.findItemByLabel(s.foodItems, 'toast');
+  assert.equal(toast.useCount, 4 + 1, 'use counts add up across the meals a food came from');
+  assert.equal(toast.lastUsed, '2026-09-19T08:00');
+  assert.deepEqual(L.splitMealName('  a,, b ;c.  '), ['A', 'B', 'C']);
+  assert.equal(L.readState(JSON.stringify(v1Diary())).state.foodItems[0].id, s.foodItems[0].id, 'the same name gets the same id every time');
+});
+
+test('migration to v2: allergens stay where she put them, so saved meals log exactly as before', () => {
+  const s = L.readState(JSON.stringify(v1Diary())).state;
+  const meal = (id) => s.meals.find((m) => m.id === id);
+  const food = (label) => L.findItemByLabel(s.foodItems, label);
+  assert.deepEqual([food('Popcorn').tags, 'tags' in meal('mp')], [['corn'], false], 'a meal that was one food hands it its tags');
+  assert.deepEqual(food('Toast').tags, ['wheat'], '"TOAST" was a one-food meal tagged wheat');
+  assert.deepEqual([meal('mb').tags, meal('mb').uncertain], [['egg', 'wheat'], ['dairy']], 'a meal of several foods keeps its tags: which food held the egg is unknown');
+  assert.deepEqual([food('Eggs').tags, food('Coffee').tags], [[], []], 'its foods start untagged, to review');
+  for (const m of v1Diary().meals) {
+    const now = L.mealTags(s, meal(m.id));
+    assert.deepEqual([now.tags.sort(), now.uncertain.sort()], [m.tags.concat(m.id === 'mk' ? ['wheat'] : []).sort(), m.uncertain.sort()],
+      `${m.name}: logs the same allergens (plus wheat where it now holds toast, which she tagged)`);
+  }
+  assert.deepEqual(meal('mk').items.map((id) => s.foodItems.find((it) => it.id === id).label), ['Chicken kebabs', 'Toast', 'Mayo', 'Coke zero']);
+});
+
+test('migration to v2: logged entries never change; an exact name match gains a link to its foods', () => {
+  const before = v1Diary();
+  const s = L.readState(JSON.stringify(before)).state;
+  s.foodLog.forEach((e, i) => {
+    const { items, ...rest } = e;
+    assert.deepEqual(rest, before.foodLog[i], `${e.id} keeps its name, tags, note, and time`);
+  });
+  const link = (id) => s.foodLog.find((e) => e.id === id).items;
+  assert.equal(link('e1').length, 4);
+  assert.equal(link('e2').length, 3);
+  assert.equal(link('e3'), undefined, '"popcorn" is not exactly "Popcorn": an older entry');
+  assert.equal(link('e4'), undefined, 'never saved as a meal: an older entry');
+  assert.deepEqual(s.symptomLog, before.symptomLog);
+  const restored = L.readBackup(JSON.stringify({ app: 'food-diary', ...before }));
+  assert.equal(restored.ok, true);
+  assert.equal(restored.skipped, 0);
+  assert.deepEqual(restored.state.foodItems.map((it) => it.id), s.foodItems.map((it) => it.id), 'restoring an old backup migrates it the same way');
+});
+
+test('restoring keeps long names whole instead of cutting them at the text box limit', () => {
+  const long = `${'Hamachi roll, veggie roll, rainbow roll (took out the imitation krab), '}coconut aminos, tom kha soup`;
+  const r = L.readBackup(JSON.stringify({ ...v1Diary(), meals: [{ id: 'm', name: long, tags: [], uncertain: [] }], foodLog: [{ ...food('e', '2026-09-11T16:59'), name: long }] }));
+  assert.ok(long.length > 80);
+  assert.equal(r.state.foodLog[0].name, long);
+  assert.equal(r.state.meals[0].name, long);
+  assert.equal(r.state.foodLog[0].items.length, 5);
+});
+
+test('foods: derived meal tags, lookup by label, and what the picker offers', () => {
+  const s = { ...L.freshState(), foodItems: [
+    { id: 'a', label: 'Pizza', tags: ['dairy', 'wheat'], uncertain: [], useCount: 3, lastUsed: '2026-09-18T12:00', reviewed: true },
+    { id: 'b', label: 'Coke zero', tags: [], uncertain: [], useCount: 9, lastUsed: '2026-09-18T12:00', reviewed: true },
+    { id: 'c', label: 'Takeout wings', tags: [], uncertain: ['dairy', 'soy'], useCount: 1, lastUsed: null, reviewed: true },
+    { id: 'd', label: 'Old soda', tags: [], uncertain: [], useCount: 1, lastUsed: null, reviewed: true, mergedInto: 'b' },
+    { id: 'h', label: 'Grapes', tags: [], uncertain: [], useCount: 0, lastUsed: null, reviewed: true, hidden: true },
+  ] };
+  assert.deepEqual(L.mealTags(s, { items: ['a', 'b', 'c'] }), { tags: ['dairy', 'wheat'], uncertain: ['soy'] }, 'contains outranks possibly hidden');
+  assert.deepEqual(L.mealTags(s, { items: ['b'], tags: ['egg'], uncertain: [] }), { tags: ['egg'], uncertain: [] }, 'a meal keeps tags it carried over');
+  assert.deepEqual(L.resolveItems(s.foodItems, ['d', 'b', 'x']).map((it) => it.id), ['b'], 'a merged food resolves to its target, once; unknown ids drop');
+  assert.equal(L.findItemByLabel(s.foodItems, '  coke ZERO ').id, 'b');
+  assert.equal(L.findItemByLabel(s.foodItems, 'old soda'), null, 'a merged-away food is no longer found by name');
+  assert.deepEqual(L.pickableItems(s.foodItems).map((it) => it.id), ['a', 'b', 'c']);
+  assert.deepEqual(L.searchMeals(s.foodItems, 'co').map((it) => it.label), ['Coke zero'], 'search works on foods');
+  assert.deepEqual(L.rankMeals(L.pickableItems(s.foodItems), '2026-09-19T12:00', 2).map((it) => it.label), ['Coke zero', 'Pizza']);
+  assert.equal(L.tagInUse({ ...s, meals: [], foodLog: [], phases: [] }, 'soy'), true, "a food's tags count as in use");
+});
+
+test('merging foods moves the library and saved meals, never past entries, and history follows', () => {
+  const s = diary({
+    foodItems: [
+      { id: 'cz', label: 'Coke zero', tags: [], uncertain: [], useCount: 2, lastUsed: '2026-09-05T12:00', reviewed: true },
+      { id: 'dc', label: 'Diet coke', tags: [], uncertain: [], useCount: 1, lastUsed: '2026-09-06T12:00', reviewed: false },
+    ],
+    meals: [{ id: 'm', name: 'Lunch', items: ['dc', 'cz'], useCount: 1, lastUsed: null }],
+    foodLog: [
+      { ...named('e2', '2026-09-02T12:00', 'Coke zero'), items: ['cz'] },
+      { ...named('e3', '2026-09-03T12:00', 'Diet coke'), items: ['dc'] },
+      { ...named('e4', '2026-09-04T12:00', 'Diet coke'), items: ['dc'] },
+    ],
+    symptomLog: [sym('s1', '2026-09-03T14:00', 'crying', 2)],
+  });
+  const log = JSON.stringify(s.foodLog);
+  const m = L.mergeItem(s, 'dc', 'cz');
+  assert.deepEqual(m.foodItems.find((it) => it.id === 'dc').mergedInto, 'cz');
+  assert.deepEqual(m.foodItems.find((it) => it.id === 'cz'), { id: 'cz', label: 'Coke zero', tags: [], uncertain: [], useCount: 3, lastUsed: '2026-09-06T12:00', reviewed: true });
+  assert.deepEqual(m.meals[0].items, ['cz'], 'the saved meal now holds the target, once');
+  assert.equal(JSON.stringify(s.foodLog), log, 'past entries are untouched');
+  assert.equal(L.mergeItem(s, 'cz', 'cz'), null);
+  const merged = { ...s, ...m };
+  const r = L.itemSuspects(merged, { from: '2026-09-01T00:00', to: '2026-09-08T00:00', windowHours: 24, now: '2026-09-10T00:00' });
+  assert.deepEqual(r.ranked.map((x) => [x.item, x.exposures, x.days]), [['cz', 3, 3]], "the old food's entries count toward the one it became");
+  const chain = L.mergeItem({ ...merged, foodItems: [...merged.foodItems, { id: 'pz', label: 'Pepsi zero', tags: [], uncertain: [], useCount: 0, lastUsed: null, reviewed: true }] }, 'cz', 'pz');
+  assert.equal(L.itemResolver(chain.foodItems)('dc').id, 'pz', 'merges chain');
+});
+
+test('individual foods are scored per pathway, and older entries by their words, never both', () => {
+  const s = diary({
+    settings: { ...L.freshState().settings, windowHours: 24, directWindowHours: 4 },
+    foodItems: [
+      { id: 'pz', label: 'Pizza', tags: ['wheat'], uncertain: [], useCount: 3, lastUsed: null, reviewed: true },
+      { id: 'cz', label: 'Coke zero', tags: [], uncertain: [], useCount: 3, lastUsed: null, reviewed: true },
+      { id: 'bn', label: 'Mashed banana', tags: [], uncertain: [], useCount: 3, lastUsed: null, reviewed: true, hidden: true },
+    ],
+    foodLog: [
+      ...[2, 3, 4].map((d) => ({ ...named(`p${d}`, `2026-09-0${d}T12:00`, 'Pizza, coke zero', { note: 'extra olives' }), items: ['pz', 'cz'], tags: ['wheat'] })),
+      ...[2, 3, 4].map((d) => ({ ...named(`b${d}`, `2026-09-0${d}T09:30`, 'Mashed banana', { who: 'baby' }), items: ['bn'] })),
+      ...[5, 6, 7].map((d) => named(`o${d}`, `2026-09-0${d}T08:00`, 'Oatmeal with raisins')),   // older entries: no items
+    ],
+    symptomLog: [2, 3, 4].map((d) => sym(`s${d}`, `2026-09-0${d}T13:00`, 'crying', 2)),
+  });
+  const range = { from: '2026-09-01T00:00', to: '2026-09-08T00:00', now: '2026-09-10T00:00', settings: s.settings };
+  const items = L.itemSuspectsByPathway(s, range), words = L.termSuspectsByPathway(s, range), tags = L.suspectsByPathway(s, range);
+  assert.equal(items.parent.windowHours, 24);
+  assert.equal(items.baby.windowHours, 4);
+  assert.equal(items.parent.baseline, tags.parent.baseline, 'the same baseline as the allergens');
+  assert.deepEqual(items.parent.ranked.map((x) => x.item).sort(), ['cz', 'pz'], '"coke zero" is one food, not coke, zero, and coke zero');
+  const pz = items.parent.ranked.find((x) => x.item === 'pz');
+  const wheat = tags.parent.ranked.find((x) => x.tag === 'wheat');
+  assert.deepEqual([pz.exposures, pz.followed, pz.ratio], [wheat.exposures, wheat.followed, wheat.ratio], 'a food scores exactly like a tag on the same meals');
+  assert.deepEqual(items.baby.ranked.map((x) => [x.item, x.followed]), [['bn', 3]], 'hidden foods still count; the baby has its own window');
+  assert.deepEqual(words.parent.ranked.map((x) => x.term).sort(), ['oatmeal', 'raisin'], 'only the older entries are read for words');
+  const every = [...words.parent.ranked, ...words.parent.notEnough, ...words.baby.ranked, ...words.baby.notEnough].map((x) => x.term);
+  assert.ok(!every.some((t) => /pizza|coke|zero|olive|banana/.test(t)), 'entries with picked foods, and their notes, are never tokenized');
+});
+
+test('restoring a backup never doubles a food: same name means same food', () => {
+  const phone = diary({
+    foodItems: [{ id: 'mine', label: 'Coke zero', tags: [], uncertain: [], useCount: 5, lastUsed: null, reviewed: true }],
+    foodLog: [{ ...named('e1', '2026-09-02T12:00', 'Coke zero'), items: ['mine'] }],
+  });
+  const backup = diary({
+    foodItems: [
+      { id: 'theirs', label: 'coke Zero', tags: [], uncertain: [], useCount: 2, lastUsed: null, reviewed: true },
+      { id: 'new', label: 'Grapes', tags: [], uncertain: [], useCount: 1, lastUsed: null, reviewed: true },
+      { id: 'alias', label: 'Diet coke', tags: [], uncertain: [], useCount: 1, lastUsed: null, reviewed: true, mergedInto: 'theirs' },
+    ],
+    meals: [{ id: 'm2', name: 'Snack', items: ['theirs', 'new'], useCount: 1, lastUsed: null }],
+    foodLog: [{ ...named('e2', '2026-09-03T12:00', 'coke Zero, grapes'), items: ['theirs', 'new'] }],
+  });
+  const before = JSON.stringify(phone);
+  const { state: s, added } = L.mergeStates(phone, backup);
+  assert.deepEqual([added.foodItems, added.meals, added.foodLog], [2, 1, 1]);
+  assert.deepEqual(s.foodItems.map((it) => it.id), ['mine', 'new', 'alias']);
+  assert.equal(s.foodItems.find((it) => it.id === 'alias').mergedInto, 'mine', 'an alias follows the food it pointed at');
+  assert.deepEqual(s.meals[0].items, ['mine', 'new']);
+  assert.deepEqual(s.foodLog.find((e) => e.id === 'e2').items, ['mine', 'new'], "the backup's entry points at the phone's food");
+  assert.equal(JSON.stringify(phone), before, 'the diary on the phone is untouched');
+  assert.equal(JSON.stringify(backup.foodLog[0].items), '["theirs","new"]', 'and so is the backup object');
+});
+
+test('restoring checks foods, saved meals, and the links between them', () => {
+  const r = L.readBackup(JSON.stringify({ ...L.freshState(), onboarded: true,
+    foodItems: [
+      { id: 'a', label: '  Pizza ', tags: ['wheat', '<b>'], uncertain: ['wheat', 'soy'], useCount: -1, lastUsed: 'soon', reviewed: 'yes', hidden: 'no' },
+      { id: 'b', label: 'B', tags: [], mergedInto: 'c' }, { id: 'c', label: 'C', tags: [], mergedInto: 'b' },   // a circle
+      { id: 'd', label: 'D', tags: [], mergedInto: 'nowhere' },
+      { id: 'e', label: '   ', tags: [] },
+      { id: 'bad id!', label: 'X', tags: [] },
+    ],
+    meals: [
+      { id: 'm1', name: 'Pie', items: ['a', 'zzz', 'a'], tags: ['egg'], uncertain: [] },
+      { id: 'm2', name: 'Nothing', items: ['zzz'] },
+    ],
+    foodLog: [
+      { ...named('f1', '2026-09-02T08:00', 'Pie'), items: ['a', 'gone'] },
+      { ...named('f2', '2026-09-02T09:00', 'Old'), items: ['gone'] },
+    ],
+  }));
+  const s = r.state;
+  assert.deepEqual(s.foodItems.map((it) => it.id), ['a', 'b', 'c', 'd']);
+  assert.deepEqual(s.foodItems[0], { id: 'a', label: 'Pizza', tags: ['wheat'], uncertain: ['soy'], useCount: 0, lastUsed: null, reviewed: false });
+  assert.equal(s.foodItems.filter((it) => it.mergedInto).length, 1, 'the circle is broken');
+  assert.equal(s.foodItems.find((it) => it.id === 'd').mergedInto, undefined, 'a merge into nothing is dropped');
+  assert.deepEqual(s.meals.map((m) => [m.id, m.items, m.tags]), [['m1', ['a'], ['egg']]], 'a meal left with no foods is dropped');
+  assert.deepEqual(s.foodLog.map((e) => [e.id, e.items]), [['f1', ['a']], ['f2', undefined]], 'an entry is never dropped; a broken link just makes it an older entry');
+  assert.equal(r.skipped, 3);
+});
+
 // ---- DST-adjacent days -------------------------------------------------------
 
 test('DST: days bucket by local date and series never skip or repeat a day', () => {
@@ -877,7 +1089,7 @@ test('mergeStates adds what is missing and keeps the current copy on a clash', (
   });
   const before = JSON.stringify(current);
   const { state: s, added } = L.mergeStates(current, incoming);
-  assert.deepEqual(added, { meals: 1, foodLog: 1, symptomLog: 1, phases: 0, symptomSets: 0 });
+  assert.deepEqual(added, { foodItems: 0, meals: 1, foodLog: 1, symptomLog: 1, phases: 0, symptomSets: 0 });
   assert.deepEqual(s.foodLog.map((e) => [e.id, e.tags.join()]), [['f1', 'wheat'], ['f2', 'soy']], 'current f1 wins');
   assert.equal(s.settings.windowHours, 48);
   assert.deepEqual(s.settings.customTags, [{ id: 'sesame', label: 'Sesame' }, { id: 'oats', label: 'Oats' }]);
@@ -886,7 +1098,7 @@ test('mergeStates adds what is missing and keeps the current copy on a clash', (
   assert.equal(s.babyName, 'Rowan', 'fills a missing name');
   assert.equal(s.lastBackup, '2026-09-10T10:00');
   assert.equal(JSON.stringify(current), before, 'current diary object untouched');
-  assert.deepEqual(L.mergeStates(s, incoming).added, { meals: 0, foodLog: 0, symptomLog: 0, phases: 0, symptomSets: 0 }, 'merging twice adds nothing');
+  assert.deepEqual(L.mergeStates(s, incoming).added, { foodItems: 0, meals: 0, foodLog: 0, symptomLog: 0, phases: 0, symptomSets: 0 }, 'merging twice adds nothing');
 });
 
 test('symptom sets: in a fresh state, gained by old saves, merged by id, and sanitized on restore', () => {
@@ -899,7 +1111,7 @@ test('symptom sets: in a fresh state, gained by old saves, merged by id, and san
     set('t2', 'Morning', [{ cat: 'stool', severity: 2, flags: ['mucus'], consistency: 'loose' }]),
   ] });
   const { state: s, added } = L.mergeStates(current, incoming);
-  assert.deepEqual(added, { meals: 0, foodLog: 0, symptomLog: 0, phases: 0, symptomSets: 1 });
+  assert.deepEqual(added, { foodItems: 0, meals: 0, foodLog: 0, symptomLog: 0, phases: 0, symptomSets: 1 });
   assert.deepEqual(s.symptomSets.map((x) => [x.id, x.name, x.useCount]), [['t1', 'Rough night', 4], ['t2', 'Morning', 0]], 'the current copy wins');
   assert.deepEqual(L.mergeStates({ ...current, symptomSets: undefined }, incoming).added.symptomSets, 2, 'a diary without the field still merges');
 
@@ -953,6 +1165,7 @@ test('readBackup refuses files that are not this app\'s diary', () => {
 test('readBackup drops damaged or unsafe entries and counts them', () => {
   const file = {
     ...L.freshState(),
+    v: 1,   // an old backup: its meals are split into foods on the way in
     onboarded: true,
     settings: { windowHours: 24, customTags: [{ id: 'sesame', label: 'Sesame' }, { id: 'bad tag', label: 'x' }, { id: 'nolabel' }], hiddenTags: ['corn', '<b>'] },
     meals: [{ id: 'm1', name: 'Toast' }, { id: 'm2', tags: ['wheat'] }],
@@ -977,7 +1190,8 @@ test('readBackup drops damaged or unsafe entries and counts them', () => {
   const r = L.readBackup(JSON.stringify(file));
   assert.equal(r.ok, true);
   const s = r.state;
-  assert.deepEqual(s.meals.map((m) => [m.id, m.tags, m.uncertain]), [['m1', [], []]], 'missing tag lists repaired, nameless meal dropped');
+  assert.deepEqual(s.meals.map((m) => [m.id, m.items.length, 'tags' in m]), [['m1', 1, false]], 'missing tag lists repaired, nameless meal dropped');
+  assert.deepEqual(s.foodItems.map((it) => [it.label, it.tags, it.uncertain]), [['Toast', [], []]]);
   assert.deepEqual(s.foodLog.map((e) => [e.id, e.tags.join(), e.uncertain.join()]), [['f1', 'dairy', 'soy']]);
   assert.deepEqual(s.symptomLog.map((e) => [e.id, e.severity, e.flags.join(), e.consistency]), [['s1', 2, 'blood', 'loose'], ['s3', 2, '', undefined]]);
   assert.deepEqual(s.phases.map((p) => p.id), ['p1']);
@@ -1020,7 +1234,8 @@ test('readState fills missing fields without dropping entries or unknown fields'
   };
   const r = L.readState(JSON.stringify(saved));
   assert.equal(r.ok, true);
-  assert.equal(r.migrated, false);
+  assert.equal(r.migrated, true, 'a version 1 diary is brought up to version 2');
+  assert.equal(r.state.v, L.STATE_VERSION);
   const s = r.state;
   assert.equal(s.babyName, 'Rowan');
   assert.equal(s.settings.windowHours, 48);

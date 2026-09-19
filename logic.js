@@ -2,7 +2,7 @@
 // (imported by index.html) and in node (logic.test.js via `node --test`).
 // Nothing here touches the DOM, storage, or the clock: callers pass `now` in.
 
-export const STATE_VERSION = 1;
+export const STATE_VERSION = 2;
 export const WINDOW_CHOICES = [6, 12, 24, 48, 72];
 // Food the baby eats directly reacts faster than food reaching the milk: 1 to 4 hours, typically.
 export const DIRECT_WINDOW_CHOICES = [1, 2, 4, 8];
@@ -189,8 +189,12 @@ export function autoMealName(settings, tags, uncertain) {
   return s && s[0].toUpperCase() + s.slice(1);
 }
 
+// Meals and symptom sets have a name; foods have a label.
+const nameOf = (x) => String(x.name ?? x.label ?? '');
+
 // Order for the recents grid: each use counts, and a meal's pull halves for
 // every week it goes unused, so both habits and this week's meals rise.
+// Works the same for foods and symptom sets.
 export function rankMeals(meals, now, limit = 8) {
   const nowMs = tsMs(now);
   const score = (m) => {
@@ -198,26 +202,137 @@ export function rankMeals(meals, now, limit = 8) {
     return (1 + (m.useCount || 0)) * 0.5 ** (ageDays / 7);
   };
   return meals.map((m) => [score(m), m])
-    .sort((a, b) => b[0] - a[0] || a[1].name.localeCompare(b[1].name))
+    .sort((a, b) => b[0] - a[0] || nameOf(a[1]).localeCompare(nameOf(b[1])))
     .slice(0, limit)
     .map(([, m]) => m);
 }
 
 // Library search: names starting with the query, then any word starting with
-// it, then containing it anywhere; more-used meals first within each.
+// it, then containing it anywhere; more-used meals first within each. Works
+// the same for foods.
 export function searchMeals(meals, query) {
   const q = normName(query);
   if (!q) return [];
   const rank = (m) => {
-    const name = normName(m.name);
+    const name = normName(nameOf(m));
     if (name.startsWith(q)) return 0;
     if (name.split(' ').some((w) => w.startsWith(q))) return 1;
     return name.includes(q) ? 2 : -1;
   };
   return meals.map((m) => [rank(m), m])
     .filter(([r]) => r >= 0)
-    .sort((a, b) => a[0] - b[0] || (b[1].useCount || 0) - (a[1].useCount || 0) || a[1].name.localeCompare(b[1].name))
+    .sort((a, b) => a[0] - b[0] || (b[1].useCount || 0) - (a[1].useCount || 0) || nameOf(a[1]).localeCompare(nameOf(b[1])))
     .map(([, m]) => m);
+}
+
+// ---- foods -------------------------------------------------------------------
+// From state v2, a meal is logged by picking foods from a list that grows as
+// she logs. Each food carries its own allergens; a saved meal is a named
+// bundle of foods, its allergens taken from them. Entries snapshot their tags
+// when logged, so editing a food never rewrites history. Merging one food into
+// another leaves the old one behind as an alias (mergedInto): past entries,
+// which never change, then count toward the food it became.
+//   Food = { id, label, tags, uncertain, useCount, lastUsed, reviewed, hidden?, mergedInto? }
+
+export const hasItems = (e) => Array.isArray(e.items) && e.items.length > 0;
+
+// Looks foods up by id, following merges to the food each one became.
+export function itemResolver(foodItems) {
+  const byId = new Map((foodItems || []).filter(isObj).map((it) => [it.id, it]));
+  return (id) => {
+    let it = byId.get(id);
+    const seen = new Set();
+    while (it && it.mergedInto && !seen.has(it.id)) {
+      seen.add(it.id);
+      const next = byId.get(it.mergedInto);
+      if (!next) break;
+      it = next;
+    }
+    return it || null;
+  };
+}
+
+// The foods behind a list of ids, merges followed, each once.
+export function resolveItems(foodItems, ids) {
+  const resolve = itemResolver(foodItems);
+  const out = new Map();
+  for (const id of ids || []) {
+    const it = resolve(id);
+    if (it && !out.has(it.id)) out.set(it.id, it);
+  }
+  return [...out.values()];
+}
+
+// Allergens across several foods (or anything with tags and uncertain): a
+// food that contains one outranks another that possibly hides it.
+export function itemTags(list) {
+  const tags = [...new Set(list.flatMap((x) => x.tags || []))];
+  const uncertain = [...new Set(list.flatMap((x) => x.uncertain || []))].filter((t) => !tags.includes(t));
+  return { tags, uncertain };
+}
+
+// A saved meal's allergens: its foods', plus any it kept from before foods
+// existed (a meal split into foods at the update keeps its old tags, because
+// which of its foods held them isn't knowable).
+export function mealTags(state, meal) {
+  return itemTags([...resolveItems(state.foodItems, meal.items), { tags: meal.tags, uncertain: meal.uncertain }]);
+}
+
+// A food by its label, ignoring case and spacing; merged-away foods don't count.
+export function findItemByLabel(foodItems, label) {
+  const n = normName(label);
+  return (n && (foodItems || []).find((it) => !it.mergedInto && normName(it.label) === n)) || null;
+}
+
+// Foods the picker offers without searching: not merged away, not hidden.
+export const pickableItems = (foodItems) => (foodItems || []).filter((it) => !it.mergedInto && !it.hidden);
+
+// Merges one food into another. The library and saved meals move to the
+// target, which also takes over the use count; the merged food stays behind
+// as an alias so past entries count toward the target. The target keeps its
+// own allergens. Returns { foodItems, meals } or null.
+export function mergeItem(state, fromId, toId) {
+  const resolve = itemResolver(state.foodItems);
+  const from = resolve(fromId), to = resolve(toId);
+  if (!from || !to || from.id === to.id) return null;
+  const foodItems = state.foodItems.map((it) => {
+    if (it.id === from.id) return { ...it, mergedInto: to.id };
+    if (it.id === to.id) return { ...it, useCount: (to.useCount || 0) + (from.useCount || 0), lastUsed: later(to.lastUsed, from.lastUsed) };
+    return it;
+  });
+  const meals = state.meals.map((m) => ((m.items || []).includes(from.id)
+    ? { ...m, items: [...new Set(m.items.map((id) => (id === from.id ? to.id : id)))] } : m));
+  return { foodItems, meals };
+}
+
+const later = (a, b) => (!isTs(a) ? (isTs(b) ? b : null) : isTs(b) && b > a ? b : a);
+
+// An old meal name split into foods at its commas (and semicolons), never
+// inside parentheses; an unclosed one keeps the rest together. Each food gets
+// a capital first letter so the list reads evenly.
+export function splitMealName(name) {
+  const pieces = [];
+  let depth = 0, cur = '';
+  for (const ch of String(name || '')) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    if ((ch === ',' || ch === ';') && depth === 0) { pieces.push(cur); cur = ''; continue; }
+    cur += ch;
+  }
+  pieces.push(cur);
+  return pieces.map((x) => x.trim().replace(/\s+/g, ' ').replace(/\.+$/, '').trim()).filter(Boolean)
+    .map((x) => x[0].toUpperCase() + x.slice(1));
+}
+
+// A stable id for a food named at the update: the same name gets the same id
+// on every copy of the diary, so restoring an old backup later can't double it.
+function labelId(label) {
+  let h = 2166136261;
+  for (const ch of normName(label)) {
+    h ^= ch.codePointAt(0);
+    h = Math.imul(h, 16777619);
+  }
+  return `f${(h >>> 0).toString(36)}`;
 }
 
 // ---- symptoms ----------------------------------------------------------------
@@ -652,7 +767,7 @@ export function textTerms(text) {
 
 function readTerms(text) {
   const clean = text.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-    .replace(/['’]s\b/g, '').replace(/['’]/g, '');   // iOS types the curly apostrophe
+    .replace(/['\u2019]s\b/g, '').replace(/['\u2019]/g, '');   // iOS types the curly apostrophe
   const terms = new Set();
   for (const phrase of clean.split(/[^a-z0-9\s-]+/)) {
     const run = [];   // kept words, with null wherever a pair can't cross
@@ -690,11 +805,32 @@ export function foodTerms(e, settings) {
 
 // Typed words scored by the suspects engine for one pathway: same window, same
 // baseline, same ratio as the tags. Rows carry `term` instead of `tag`.
+// Only older entries (no picked foods) are read for words; an entry logged
+// from picked foods is scored by its foods instead, never both.
 export function termSuspects(state, { from, to, windowHours, now, settings, who = null, limit = TERM_LIMIT }) {
-  const groups = exposureGroups(state.foodLog, who, (e) => foodTerms(e, settings).map((t) => [t, false]));
+  const groups = exposureGroups(state.foodLog, who, (e) => (hasItems(e) ? [] : foodTerms(e, settings).map((t) => [t, false])));
   const r = scoreGroups(state, groups, { from, to, windowHours, now, who, minWeight: TERM_MIN, minDays: TERM_MIN });
   const asTerm = ({ tag, ...row }) => ({ term: tag, ...row });
   return { ...r, ranked: r.ranked.slice(0, limit).map(asTerm), more: Math.max(0, r.ranked.length - limit), notEnough: r.notEnough.map(asTerm) };
+}
+
+// Individual foods scored like ad-hoc tags, per pathway: same window, same
+// baseline, same ratio, same bar and cap as the words. Merged foods count
+// toward the food they became; hidden ones still count. Rows carry `item`.
+export function itemSuspects(state, { from, to, windowHours, now, who = null, limit = TERM_LIMIT }) {
+  const resolve = itemResolver(state.foodItems);
+  const keys = (e) => (hasItems(e) ? [...new Set(e.items.map((id) => resolve(id)?.id).filter(Boolean))].map((id) => [id, false]) : []);
+  const r = scoreGroups(state, exposureGroups(state.foodLog, who, keys), { from, to, windowHours, now, who, minWeight: TERM_MIN, minDays: TERM_MIN });
+  const asItem = ({ tag, ...row }) => ({ item: tag, ...row });
+  return { ...r, ranked: r.ranked.slice(0, limit).map(asItem), more: Math.max(0, r.ranked.length - limit), notEnough: r.notEnough.map(asItem) };
+}
+
+export function itemSuspectsByPathway(state, { from, to, now, settings }) {
+  const shared = { from, to, now };
+  return {
+    parent: itemSuspects(state, { ...shared, who: 'parent', windowHours: settings.windowHours }),
+    baby: itemSuspects(state, { ...shared, who: 'baby', windowHours: settings.directWindowHours }),
+  };
 }
 
 export function termSuspectsByPathway(state, { from, to, now, settings }) {
@@ -774,7 +910,7 @@ export function addCustomTag(settings, label) {
 // never deleted, so history keeps its labels.
 export function tagInUse(state, id) {
   const onMeal = (m) => (m.tags || []).includes(id) || (m.uncertain || []).includes(id);
-  return state.meals.some(onMeal) || state.foodLog.some(onMeal) || state.phases.some((p) => p.tag === id);
+  return (state.foodItems || []).some(onMeal) || state.meals.some(onMeal) || state.foodLog.some(onMeal) || state.phases.some((p) => p.tag === id);
 }
 
 // ---- backups -----------------------------------------------------------------
@@ -783,11 +919,34 @@ export function tagInUse(state, id) {
 // Anything the current diary lacks is added; on a clash the current copy wins,
 // so importing an older backup can never undo edits made since. Returns a new
 // state (inputs untouched) and how many of each were added.
+// Foods match by id first, then by label: a food in the backup named like one
+// already here is taken as that food, and the backup's entries and meals are
+// pointed at it (on the incoming copies only), so a restore never doubles a food.
 export function mergeStates(current, incoming) {
   const out = { ...current, settings: { ...current.settings } };
   const added = {};
-  for (const k of ['meals', 'foodLog', 'symptomLog', 'phases', 'symptomSets']) {
-    const mine = current[k] || [], theirs = incoming[k] || [];
+  const mineFoods = current.foodItems || [];
+  const foodIds = new Set(mineFoods.map((it) => it.id));
+  const byLabel = new Map(mineFoods.filter((it) => !it.mergedInto).map((it) => [normName(it.label), it.id]));
+  const remap = new Map();
+  const newFoods = [];
+  for (const it of incoming.foodItems || []) {
+    if (!isObj(it) || it.id == null || foodIds.has(it.id)) continue;
+    const same = !it.mergedInto && byLabel.get(normName(it.label));
+    if (same) { remap.set(it.id, same); continue; }
+    newFoods.push(it);
+    foodIds.add(it.id);
+    if (!it.mergedInto) byLabel.set(normName(it.label), it.id);
+  }
+  const mapIds = (ids) => [...new Set(ids.map((id) => remap.get(id) || id))];
+  const pointed = (list) => (list || []).map((x) => (isObj(x) && Array.isArray(x.items) ? { ...x, items: mapIds(x.items) } : x));
+  const theirsBy = {
+    foodItems: newFoods.map((it) => (remap.has(it.mergedInto) ? { ...it, mergedInto: remap.get(it.mergedInto) } : it)),
+    meals: pointed(incoming.meals),
+    foodLog: pointed(incoming.foodLog),
+  };
+  for (const k of ['foodItems', 'meals', 'foodLog', 'symptomLog', 'phases', 'symptomSets']) {
+    const mine = current[k] || [], theirs = theirsBy[k] || incoming[k] || [];
     const have = new Set(mine.map((x) => x.id));
     const extra = theirs.filter((x) => isObj(x) && x.id != null && !have.has(x.id));
     added[k] = extra.length;
@@ -823,6 +982,9 @@ export function backupReminder(state, today) {
 
 export const APP_ID = 'food-diary';
 const SAFE_ID = /^[\w-]{1,64}$/;
+// Names typed on a phone can run past the text box's limit (pasted, dictated),
+// so a restore keeps them whole up to a generous bound instead of cutting them.
+const NAME_MAX = 300;
 const SAFE_TAG = /^[a-z0-9-]{1,40}$/;
 
 // Reads a backup file. Beyond readState's version checks, the file has to be
@@ -864,25 +1026,54 @@ export function sanitizeDiary(s) {
     return out;
   };
 
-  const meals = keep(s.meals, (m) => {
-    const name = text(m.name, 80).trim();
-    if (!name) return null;
-    const tags = tagList(m.tags);
-    return {
-      ...m, name, tags, uncertain: tagList(m.uncertain).filter((t) => !tags.includes(t)),
-      useCount: Number.isFinite(m.useCount) && m.useCount > 0 ? Math.floor(m.useCount) : 0,
-      lastUsed: isTs(m.lastUsed) ? m.lastUsed : null,
+  const count = (n) => (Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
+  const foodItems = keep(s.foodItems || [], (it) => {
+    const label = text(it.label, NAME_MAX).trim();
+    if (!label) return null;
+    const tags = tagList(it.tags);
+    const out = {
+      ...it, label, tags, uncertain: tagList(it.uncertain).filter((t) => !tags.includes(t)),
+      useCount: count(it.useCount), lastUsed: isTs(it.lastUsed) ? it.lastUsed : null, reviewed: it.reviewed === true,
     };
+    if (it.hidden === true) out.hidden = true; else delete out.hidden;
+    if (typeof it.mergedInto === 'string' && SAFE_ID.test(it.mergedInto) && it.mergedInto !== it.id) out.mergedInto = it.mergedInto;
+    else delete out.mergedInto;
+    return out;
+  });
+  // A merge has to land on a food that exists, and never go in a circle.
+  const foodIds = new Set(foodItems.map((it) => it.id));
+  for (const it of foodItems) if (it.mergedInto && !foodIds.has(it.mergedInto)) delete it.mergedInto;
+  const resolve = itemResolver(foodItems);
+  for (const it of foodItems) if (resolve(it.id)?.mergedInto) delete resolve(it.id).mergedInto;
+  const foodRefs = (v) => (Array.isArray(v) ? [...new Set(v.filter((id) => typeof id === 'string' && foodIds.has(id)))] : []);
+
+  // A saved meal needs at least one food. Allergens kept on a meal (from the
+  // update) stay only if they're safe tags.
+  const meals = keep(s.meals, (m) => {
+    const name = text(m.name, NAME_MAX).trim();
+    const items = foodRefs(m.items);
+    if (!name || !items.length) return null;
+    const tags = tagList(m.tags);
+    const out = {
+      ...m, name, items, tags, uncertain: tagList(m.uncertain).filter((t) => !tags.includes(t)),
+      useCount: count(m.useCount), lastUsed: isTs(m.lastUsed) ? m.lastUsed : null,
+    };
+    if (!out.tags.length && !out.uncertain.length) { delete out.tags; delete out.uncertain; }
+    return out;
   });
 
   const foodLog = keep(s.foodLog, (e) => {
     if (!isTs(e.ts)) return null;
     const tags = tagList(e.tags);
     return {
-      ...e, name: text(e.name, 80).trim() || 'Food', tags, uncertain: tagList(e.uncertain).filter((t) => !tags.includes(t)),
+      ...e, name: text(e.name, NAME_MAX).trim() || 'Food', tags, uncertain: tagList(e.uncertain).filter((t) => !tags.includes(t)),
       mealId: typeof e.mealId === 'string' && SAFE_ID.test(e.mealId) ? e.mealId : null, note: text(e.note),
       who: eventWho(e),   // entries from before solids carry none, and mean the parent
+      items: foodRefs(e.items),   // picked foods; none means an older entry, read by its name
     };
+  }).map((e) => {
+    if (!e.items.length) delete e.items;
+    return e;
   });
 
   const symptomLog = keep(s.symptomLog, (e) => {
@@ -944,7 +1135,7 @@ export function sanitizeDiary(s) {
       ...s,
       babyName: text(s.babyName, 40),
       settings: { ...s.settings, customTags, hiddenTags: tagList(s.settings.hiddenTags) },
-      meals, foodLog, symptomLog, symptomSets, phases,
+      foodItems, meals, foodLog, symptomLog, symptomSets, phases,
       dismissed: s.dismissed.filter((k) => typeof k === 'string').slice(0, 500),
     },
     skipped,
@@ -977,8 +1168,9 @@ export function freshState() {
       customTags: [],   // [{ id, label }], id slugified from label
       hiddenTags: [],   // tag ids hidden from pickers, never deleted
     },
-    meals: [],
-    foodLog: [],
+    foodItems: [],      // [Food], see the foods section: the picker's list, grown as she logs
+    meals: [],          // [{ id, name, items: [foodId], useCount, lastUsed, tags?, uncertain? }]: named bundles of foods
+    foodLog: [],        // entries carry items: [foodId] when logged from picked foods
     symptomLog: [],
     symptomSets: [],    // [{ id, name, items: [{ cat, severity, flags, consistency?, color? }], useCount, lastUsed }]: one tap fills the symptom sheet
     phases: [],
@@ -988,9 +1180,57 @@ export function freshState() {
   };
 }
 
+// Version 1 to 2: food becomes picked foods. Every saved meal is split into
+// foods at its commas (splitMealName), each distinct food once, unreviewed,
+// with the meal's use count. A meal that is a single food hands that food its
+// allergens; a meal of several foods keeps its allergens on the meal, since
+// which food held the egg isn't knowable. Meals become bundles of their foods.
+// Logged entries keep their name, tags, and note untouched; an entry whose
+// name matches a saved meal's name exactly gains a link to that meal's foods,
+// and the rest stay as older entries.
+export function migrate1to2(s) {
+  const strs = (v) => (Array.isArray(v) ? [...new Set(v.filter((x) => typeof x === 'string'))] : []);
+  const byLabel = new Map();   // normalized label -> food
+  const ids = new Set((Array.isArray(s.foodItems) ? s.foodItems : []).filter(isObj).map((it) => it.id));
+  const foodFor = (label) => {
+    const key = normName(label);
+    let it = byLabel.get(key);
+    if (!it) {
+      let id = labelId(label);
+      for (let n = 2; ids.has(id); n++) id = `${labelId(label)}-${n}`;
+      ids.add(id);
+      it = { id, label, tags: [], uncertain: [], useCount: 0, lastUsed: null, reviewed: false };
+      byLabel.set(key, it);
+    }
+    return it;
+  };
+  const byName = new Map();    // exact meal name -> its foods' ids
+  const meals = (Array.isArray(s.meals) ? s.meals : []).map((m) => {
+    if (!isObj(m) || typeof m.name !== 'string' || !splitMealName(m.name).length) return m;
+    const tags = strs(m.tags), uncertain = strs(m.uncertain).filter((t) => !tags.includes(t));
+    const foods = [...new Set(splitMealName(m.name).map(foodFor))];
+    for (const it of foods) {
+      it.useCount += Number.isFinite(m.useCount) && m.useCount > 0 ? Math.floor(m.useCount) : 0;
+      it.lastUsed = later(it.lastUsed, m.lastUsed);
+    }
+    const { tags: _t, uncertain: _u, ...rest } = m;
+    const out = { ...rest, items: foods.map((it) => it.id) };
+    if (foods.length === 1) {
+      Object.assign(foods[0], itemTags([foods[0], { tags, uncertain }]));
+    } else if (tags.length || uncertain.length) {
+      Object.assign(out, { tags, uncertain });
+    }
+    if (!byName.has(m.name)) byName.set(m.name, out.items);
+    return out;
+  });
+  const foodLog = (Array.isArray(s.foodLog) ? s.foodLog : []).map((e) =>
+    (isObj(e) && typeof e.name === 'string' && byName.has(e.name) && !Array.isArray(e.items) ? { ...e, items: [...byName.get(e.name)] } : e));
+  return { ...s, foodItems: [...(Array.isArray(s.foodItems) ? s.foodItems : []), ...byLabel.values()], meals, foodLog };
+}
+
 // Upgrades from version k to k+1, keyed by k. Migrations are additive: they
-// add or reshape fields and never drop diary entries. None exist yet.
-const MIGRATIONS = {};
+// add or reshape fields and never drop diary entries.
+const MIGRATIONS = { 1: migrate1to2 };
 
 // Reads whatever localStorage (or an imported file) holds.
 //   { ok: true, state, fresh, migrated }   ready to use
@@ -1026,7 +1266,7 @@ export function normalizeState(s) {
   for (const k of ['customTags', 'hiddenTags']) {
     if (!Array.isArray(out.settings[k])) out.settings[k] = [];
   }
-  for (const k of ['meals', 'foodLog', 'symptomLog', 'symptomSets', 'phases', 'dismissed']) {
+  for (const k of ['foodItems', 'meals', 'foodLog', 'symptomLog', 'symptomSets', 'phases', 'dismissed']) {
     if (!Array.isArray(out[k])) out[k] = [];
   }
   if (typeof out.babyName !== 'string') out.babyName = '';

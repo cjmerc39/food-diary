@@ -41,29 +41,43 @@ own files so it works offline; the diary itself lives only in localStorage.
   show the day's stools. A stool can also carry an optional color. Color adds
   no points (green is common and normal); red, black, and pale each show a
   calm call-your-pediatrician note. Sets remember the color but not the count.
+- **Foods:** a meal is the foods picked for it. Saved meals sit on top of the
+  `+ food` sheet for a one-tap repeat (the six most used; the rest turn up when
+  searching). Below them, a field finds foods as she types, with recent and
+  most-used foods under it once it has focus; tapping one adds it as a chip,
+  and text with no match can be added as a new food, its allergen chips right
+  there. The field never grabs the keyboard on open, and while it has focus
+  the sheet stands tall so the list sits above the keyboard. Allergens belong
+  to foods; a saved meal's come from its foods. Each entry snapshots its
+  allergens when logged, and can be adjusted for that entry alone. More >
+  Foods lists every food with its allergens and use count, the ones to review
+  first; each can be renamed, retagged, hidden from the picker, or merged into
+  another. Merging moves saved meals and future logs to the kept food and
+  leaves past entries alone, which then count toward it in Trends.
 - **Solids:** every food entry records who ate it, the parent (through breast
   milk) or the baby directly. The `+ food` sheet opens with a two-way toggle
   at the top, defaulting to the parent and naming the baby; the meal library
-  is shared. Baby entries carry a small name pill on Today. Exposure banners
+  and foods are shared. Baby entries carry a small name pill on Today. Exposure banners
   and the reintroduction watch fire for both pathways and say who ate the food.
 - **Trends:** daily symptom load with one track per phase food behind the
   line, per-category strips, and the suspects list, scored per pathway once
   the baby has eaten anything: food reaching the baby through breast milk uses
   the suspects window (default 24h), the baby's own food a faster one (default
   4h, options 1/2/4/8, both editable inline and in More). The same food can
-  appear under both with different scores. Below the allergens, **Foods
-  you've typed** scores the words in meal names and food notes the same way
-  (same windows, baseline, and ratio), per pathway: lowercased, punctuation
-  and filler words dropped, plurals folded, single words and neighbor pairs.
-  A word needs 3 exposures on 3 separate days, only the top 10 show, and it
-  is labeled exploratory. Symptom notes never count as food, and a food
-  written as left out ("dairy-free", "no cheese") doesn't count as eaten.
+  appear under both with different scores. Below the allergens, **Individual
+  foods** scores each picked food the same way (same windows, baseline, and
+  ratio), per pathway. A food needs 3 exposures on 3 separate days, only the
+  top 10 show, and it is labeled exploratory. Older entries, from before
+  foods were picked, are read word by word (lowercased, punctuation and filler
+  words dropped, plurals folded, single words and neighbor pairs; "dairy-free"
+  or "no cheese" doesn't count as eaten) and shown as their own group, so no
+  entry counts twice. Notes, food or symptom, never count as food.
   Correlation, not diagnosis.
 - **Phases:** eliminations and reintroductions. They drive the exposure
   banners on Today and the 72-hour reintroduction watch card.
 - **More > Report:** a print-styled summary for the pediatrician, with a Who
   column in the log (stool counts and colors included), both suspect
-  pathways, and the typed words with their exploratory caveat. Print (it
+  pathways, and individual foods with their exploratory caveat. Print (it
   works from the Home Screen app), save a PDF from the print preview, or
   **Share as a file** for a printable copy in Files, Mail, or AirDrop.
 - **More > Back up now:** saves the whole diary as a JSON file through the
@@ -95,7 +109,7 @@ own files so it works offline; the diary itself lives only in localStorage.
 | File | What it is |
 | --- | --- |
 | `index.html` | The whole app: markup, styles, UI code |
-| `logic.js` | Pure computation shared by the browser and the tests: time and day math, phases, meals and tags, symptom load and stool counts, suspects (allergen tags and typed words), trends ranges, backups (reading, checking, merging, including symptom sets), the backup reminder, and which mark a quiet day shows |
+| `logic.js` | Pure computation shared by the browser and the tests: time and day math, phases, meals, foods and tags, symptom load and stool counts, suspects (allergen tags, individual foods, and older entries' words), the v1 to v2 migration, trends ranges, backups (reading, checking, merging, including symptom sets), the backup reminder, and which mark a quiet day shows |
 | `logic.test.js` | Tests for `logic.js` |
 | `sw.js` | Cache-first service worker for the app shell |
 | `manifest.json` | PWA manifest |
@@ -130,14 +144,23 @@ then show "A new version is ready" with a Reload button. Releases are tagged.
   `cjmerc39.github.io` share one localStorage and one Cache Storage, so this app
   only touches its own key prefix and its own `food-diary-shell-` caches. Never
   call `localStorage.clear()`; Clear all data removes only `food-diary:` keys.
-- `state.v` is the schema version. Migrations are additive (symptom sets are an
-  extra array; `color` and `count` on stool entries are optional fields, and a
-  missing count means one; `who` on food entries is an extra field, and a
-  missing one means the parent; older saves simply gain the defaults). A build
-  that finds a newer version refuses to open or write the diary rather than
-  guess.
+- `state.v` is the schema version, now 2. Migrations never drop or change a
+  logged entry. Version 1 to 2 (build 15) turned free-text meals into picked
+  foods: each saved meal was split into foods at its commas (never inside
+  parentheses), each distinct food once and marked to review. A meal that was
+  one food handed it its allergens; a meal of several keeps its own, since
+  which food held them isn't knowable. Entries keep their name and tags, and
+  one whose name exactly matches a saved meal gains `items` linking it to
+  that meal's foods; the rest stay older entries. Before the first save in a
+  new version, the diary as it was is kept under `food-diary:state:v<old>:<time>`.
+  Other additions are optional fields (symptom sets; `color` and `count` on
+  stool entries, a missing count meaning one; `who` on food entries, a missing
+  one meaning the parent). A build that finds a newer version refuses to open
+  or write the diary rather than guess.
 - Unreadable saved data is set aside under `food-diary:state:unreadable:<time>`
   before a fresh diary starts.
+- Restoring an older backup runs the same migration, and foods match by name
+  as well as id, so a restore never doubles a food.
 - Backup files carry `"app": "food-diary"`. Restores check every entry (safe
   ids and tags, known categories, valid dates, no repeated ids) and leave out
   anything damaged.
