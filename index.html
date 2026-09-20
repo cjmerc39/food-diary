@@ -166,8 +166,8 @@ svg{display:block;flex:none}
    Taps spring a little and a new selection settles instead of snapping. Anything
    showing severity 3 or carrying a call-the-doctor note settles calmly instead,
    with no bounce (see CALM_CONTROLS). Everything stays under about 300ms. */
-.chip,.opt,.cat,.seg button{transition:background-color .18s ease,border-color .18s ease,color .18s ease,transform .12s ease}
-.chip:active,.opt:active,.cat:active,.seg button:active{transform:scale(.96)}
+.chip,.opt,.cat,.color-tile,.seg button{transition:background-color .18s ease,border-color .18s ease,color .18s ease,transform .12s ease}
+.chip:active,.opt:active,.cat:active,.color-tile:active,.seg button:active{transform:scale(.96)}
 [data-sev="3"]:active,[data-stool="watery"]:active,[data-flag="blood"]:active,
 [data-color="red"]:active,[data-color="black"]:active,[data-color="pale"]:active{transform:none}
 @keyframes spring{0%{transform:scale(.94);filter:brightness(1.06)}60%{transform:scale(1.03)}100%{transform:none;filter:none}}
@@ -374,9 +374,16 @@ svg{display:block;flex:none}
 .opt[aria-checked="true"] .num{background:var(--sym-on);color:var(--sym-ink)}
 .opt[aria-checked="true"] .opt-sub,.opt[aria-checked="true"] .opt-warn{color:var(--sym-on)}
 .flagpick .chip[aria-pressed="true"]{background:var(--sym);border-color:var(--sym);color:var(--sym-on)}
-.colorpick .chip{display:inline-flex;align-items:center;gap:8px;min-height:46px;padding:0 14px 0 12px;font-size:16px}
-.colorpick .chip .cdot{width:16px;height:16px}
-.colorpick .chip[aria-pressed="true"]{background:var(--sym);border-color:var(--sym);color:var(--sym-on)}
+/* Stool color reads as a color card, the way the screening cards do it: even
+   tiles with the color itself in front, the everyday range and the three worth
+   a call in their own rows. */
+.color-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:6px}
+.color-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:80px;
+  padding:8px 2px;border-radius:16px;background:var(--sunk);font-size:13px;font-weight:600;line-height:1.2}
+.tile-swatch{width:34px;height:34px;border-radius:50%;background:var(--sc);box-shadow:inset 0 0 0 1.5px rgba(128,128,128,.55)}
+.color-tile[aria-pressed="true"]{background:var(--sym-soft);color:var(--sym-ink)}
+.color-tile[aria-pressed="true"] .tile-swatch{box-shadow:inset 0 0 0 1.5px rgba(128,128,128,.55),0 0 0 3px var(--sym)}
+.tile-group{margin-top:12px;color:var(--ink2);font-size:14px;font-weight:600}
 .stepper{display:grid;grid-template-columns:64px 1fr 64px;align-items:center;gap:8px}
 .stepper .btn{min-height:52px;padding:0;font-size:24px}
 .step-num{text-align:center;font:700 26px/1 var(--round);font-variant-numeric:tabular-nums}
@@ -692,7 +699,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 16;
+const BUILD = 17;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -800,6 +807,14 @@ const COLORS = {
   black: { label: 'Black', short: 'Black', hex: '#1c1a18' },
   pale: { label: 'Pale or white', short: 'Pale', hex: '#ece6d6' },
 };
+// Shown in two rows, as the infant stool colour cards used for newborn
+// screening do: the everyday colors, then the three that mean call. Yellow,
+// green, brown, and orange are all normal; white or pale, black, and red are
+// the ones every pediatric chart says to ring about.
+const COLOR_GROUPS = [
+  { label: 'Usual range', ids: ['yellow', 'green', 'brown', 'orange'] },
+  { label: 'Worth a call', ids: ['red', 'black', 'pale'] },
+];
 // The three worth a call, in the same register as the blood and breathing notes.
 const COLOR_WARNINGS = {
   red: BLOOD_WARNING,
@@ -3203,9 +3218,11 @@ function symptomSectionHtml(d, c, { titled = false, notes = true, counts = true 
           <button class="btn" data-act="count" data-cat="${c}" data-step="1" aria-label="One more"${it.count >= MAX_STOOL_COUNT ? ' disabled' : ''}>+</button>
         </div></div>`;
     }
+    const tile = (k) => `<button class="color-tile" data-act="color" data-cat="${c}" data-color="${k}" aria-pressed="${it.color === k}" aria-label="${esc(COLORS[k].label)}">
+        <span class="tile-swatch" style="--sc:${COLORS[k].hex}" aria-hidden="true"></span><span>${esc(COLORS[k].short)}</span></button>`;
     html += `<div class="sect"><span class="sect-label">Color, if you noticed</span>
-      <div class="chips colorpick" role="group" aria-label="Color">${STOOL_COLORS.map((k) =>
-        `<button class="chip" data-act="color" data-cat="${c}" data-color="${k}" aria-pressed="${it.color === k}"><i class="cdot" style="--sc:${COLORS[k].hex}"></i>${COLORS[k].label}</button>`).join('')}</div>
+      ${COLOR_GROUPS.map((g) => `<p class="tile-group">${esc(g.label)}</p>
+        <div class="color-grid" role="group" aria-label="${esc(g.label)}">${g.ids.map(tile).join('')}</div>`).join('')}
       ${CAUTION_COLORS.includes(it.color) ? `<p class="caution" role="note" data-caution="color">${ICON.alert}<span>${esc(COLOR_WARNINGS[it.color])}</span></p>` : ''}</div>`;
   } else {
     html += `<div class="sect"><span class="sect-label">How bad?</span><div class="opts" role="radiogroup" aria-label="Severity">${[1, 2, 3].map((n) => `
@@ -3648,7 +3665,7 @@ async function checkForUpdate() {
 // ---- motion ------------------------------------------------------------------------------
 // Taps on choice controls get a small spring. Many taps re-render their sheet,
 // so the spring finds whichever node now carries the tapped control's identity.
-const SPRING_CONTROLS = '.chip, .opt, .cat, .seg button, .switchrow';
+const SPRING_CONTROLS = '.chip, .opt, .cat, .color-tile, .seg button, .switchrow';
 // Anything showing severity 3, or carrying a call-the-doctor note (blood, and the
 // red, black, and pale stool colors), settles calmly: no bounce.
 const CALM_CONTROLS = '[data-sev="3"], [data-stool="watery"], [data-flag="blood"], [data-color="red"], [data-color="black"], [data-color="pale"]';

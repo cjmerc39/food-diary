@@ -38,9 +38,12 @@ own files so it works offline; the diary itself lives only in localStorage.
   toward suspects like any symptom but stays out of the 0 to 20 load, which
   keeps its five clinical categories. A stool entry can stand for several
   alike diapers (a count, default one), and the glance card and daily numbers
-  show the day's stools. A stool can also carry an optional color. Color adds
-  no points (green is common and normal); red, black, and pale each show a
-  calm call-your-pediatrician note. Sets remember the color but not the count.
+  show the day's stools. A stool can also carry an optional color, picked from
+  a color card laid out the way the infant stool colour cards used in newborn
+  screening are: even tiles with the color in front, the usual range in one row
+  and the three worth a call in the next. Color adds no points (green is common
+  and normal); red, black, and pale each show a calm call-your-pediatrician
+  note. Sets remember the color but not the count.
 - **Foods:** a meal is the foods picked for it. Saved meals sit on top of the
   `+ food` sheet for a one-tap repeat (the six most used; the rest turn up when
   searching). Below them, a field finds foods as she types, with recent and
