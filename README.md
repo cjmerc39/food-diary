@@ -71,7 +71,15 @@ own files so it works offline; the diary itself lives only in localStorage.
   the baby has eaten anything: food reaching the baby through breast milk uses
   the suspects window (default 24h), the baby's own food a faster one (default
   4h, options 1/2/4/8, both editable inline and in More). The same food can
-  appear under both with different scores. Below the allergens, **Individual
+  appear under both with different scores. Each row reads in plain words: how
+  much there is to go on (one, two, or three dots with Early, Taking shape, or
+  Well established), how often symptoms followed, and the multiple of usual.
+  The multiple is a Bayesian average, not a plain one: every food starts at 1x
+  as if three typical stretches had been logged for it, and each exposure
+  moves it, so two exposures can't look extreme in either direction (build
+  18). Early rows, fewer than 3 finished exposures on 3 separate days, sit
+  below the rest under their own note and are never ranked among them. The
+  plain ratio is still computed (`ratio`) but not shown. Below the allergens, **Individual
   foods** scores each picked food the same way (same windows, baseline, and
   ratio), per pathway. A food needs 3 exposures on 3 separate days, only the
   top 10 show, and it is labeled exploratory. Older entries, from before

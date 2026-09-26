@@ -576,6 +576,54 @@ test('suspects: no symptoms in range leaves the ratio empty instead of dividing 
   assert.equal(r.ranked[0].meanAfter, 0);
 });
 
+test('the shown multiple starts at 1x and moves as exposures come in; early rows rank below the rest', () => {
+  // Baseline 1 point per 24h window: 10 points over 240 hours.
+  const symptomLog = [];
+  const foodLog = [];
+  // Twenty dairy exposures, each followed by 2 points (2x): well established.
+  for (let i = 0; i < 20; i++) {
+    const day = String(i + 1).padStart(2, '0');
+    foodLog.push(food(`d${i}`, `2026-09-${day}T08:00`, ['dairy']));
+    symptomLog.push(sym(`s${i}`, `2026-09-${day}T10:00`, 'crying', 2));
+  }
+  // Two egg exposures, each followed by 9.6 points' worth (4.8x): early.
+  for (const [i, day] of [['a', '21'], ['b', '22']]) {
+    foodLog.push(food(`e${i}`, `2026-09-${day}T08:00`, ['egg']));
+    symptomLog.push(sym(`e${i}s`, `2026-09-${day}T09:00`, 'crying', 3), sym(`e${i}t`, `2026-09-${day}T10:00`, 'skin', 3, ['hives']));   // 3 + 5 = 8
+  }
+  const s = diary({ foodLog, symptomLog });
+  const r = L.suspects(s, { from: '2026-09-01T00:00', to: '2026-09-25T00:00', windowHours: 24, now: '2026-09-25T00:00' });
+  const dairy = r.ranked.find((x) => x.tag === 'dairy'), egg = r.ranked.find((x) => x.tag === 'egg');
+  // 56 points over 576 hours: baseline 2.33 per 24h.
+  assert.ok(near(r.baseline, (56 / 576) * 24));
+  assert.ok(egg.ratio > dairy.ratio, 'the plain average says egg is worse');
+  assert.ok(near(egg.adjusted, (16 + 3 * r.baseline) / ((2 + 3) * r.baseline)), 'two exposures move it only partway from 1x');
+  assert.ok(near(dairy.adjusted, (40 + 3 * r.baseline) / ((20 + 3) * r.baseline)), 'twenty move it nearly all the way');
+  const toward1 = (x) => Math.abs(x.adjusted - 1) < Math.abs(x.ratio - 1);
+  assert.ok(toward1(egg) && toward1(dairy), 'both move toward 1x: egg down from 3.4x, dairy up from 0.86x');
+  assert.ok(Math.abs(dairy.adjusted - dairy.ratio) < Math.abs(egg.adjusted - egg.ratio), 'twenty exposures barely move; two move a lot');
+  assert.deepEqual([dairy.evidence, egg.evidence], ['established', 'early']);
+  assert.deepEqual(r.ranked.map((x) => x.tag), ['dairy', 'egg'], 'early rows sit below the rest, whatever their number');
+  assert.equal(L.evidenceOf({ weight: 3, completeDays: 3 }), 'building');
+  assert.equal(L.evidenceOf({ weight: 5, completeDays: 2 }), 'early', 'five exposures on two days are still early');
+  assert.equal(L.evidenceOf({ weight: 6, completeDays: 6 }), 'established');
+  assert.equal(L.PRIOR_STRETCHES, 3);
+  // Two quiet exposures don't clear a food either.
+  const quiet = L.suspects(diary({ foodLog: [food('q1', '2026-09-02T08:00', ['corn']), food('q2', '2026-09-03T08:00', ['corn'])], symptomLog: [sym('z', '2026-09-05T08:00', 'crying', 2)] }),
+    { from: '2026-09-01T00:00', to: '2026-09-08T00:00', windowHours: 24, now: '2026-09-10T00:00' });
+  assert.equal(quiet.ranked[0].ratio, 0);
+  assert.ok(near(quiet.ranked[0].adjusted, 3 / 5), 'from 1x toward 0x, partway');
+  assert.equal(L.suspects(diary({ foodLog: [food('a', '2026-09-02T08:00', ['corn']), food('b', '2026-09-03T08:00', ['corn'])] }), RANGE).ranked[0].adjusted, null, 'no symptoms in range: no number');
+});
+
+test('wilsonLow is the fraction the data can vouch for', () => {
+  assert.equal(L.wilsonLow(0, 0), 0);
+  assert.ok(Math.abs(L.wilsonLow(2, 2) - 0.342) < 0.001);
+  assert.ok(Math.abs(L.wilsonLow(20, 20) - 0.839) < 0.001);
+  assert.ok(L.wilsonLow(3, 4) < 0.75 && L.wilsonLow(3, 4) > 0.3);
+  assert.ok(L.wilsonLow(0, 5) === 0 || L.wilsonLow(0, 5) < 1e-12);
+});
+
 // ---- two pathways: through breast milk, and the baby's own food ---------------
 
 test('who: missing means the parent, and only baby means baby', () => {

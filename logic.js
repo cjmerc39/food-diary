@@ -657,6 +657,30 @@ function exposureGroups(foodLog, who, keysOf) {
   return groups;
 }
 
+// ---- how much a row can be trusted ------------------------------------------
+// A plain average is as loud on two exposures as on twenty. So every food
+// starts at 1x, as if PRIOR_STRETCHES typical stretches had already been
+// logged for it, and each real exposure moves it: two can move it only
+// partway, twenty nearly all the way. (The Bayesian average behind IMDb's
+// ratings; the shrinkage behind medical league tables.) `ratio` stays the
+// plain average; `adjusted` is what the app shows and ranks by.
+export const PRIOR_STRETCHES = 3;
+
+// How much there is to go on. Early rows are listed but never ranked among
+// the rest: fewer than 3 finished exposures on 3 separate days is too few to
+// judge, whatever the number says.
+export const EVIDENCE = ['early', 'building', 'established'];
+export const evidenceOf = (row) =>
+  (row.weight >= 6 && row.completeDays >= 6 ? 'established' : row.weight >= 3 && row.completeDays >= 3 ? 'building' : 'early');
+
+// Lower bound of the 95% Wilson score interval for k of n: the fraction the
+// data can vouch for. 2 of 2 comes out near 0.3; 20 of 20 near 0.84.
+export function wilsonLow(k, n) {
+  if (!n) return 0;
+  const z = 1.96, p = k / n, zz = z * z;
+  return (p + zz / (2 * n) - z * Math.sqrt((p * (1 - p) + zz / (4 * n)) / n)) / (1 + zz / n);
+}
+
 // The suspects math, shared by allergen tags and typed words. Rows carry the
 // key as `tag`. `days` counts the separate days eaten in range; `completeDays`
 // the days among exposures whose window has finished. A row is scored once
@@ -698,10 +722,16 @@ function scoreGroups(state, groups, { from, to, windowHours, now, minWeight = 2,
     if (weight < minWeight || row.completeDays < minDays) { notEnough.push(row); continue; }
     row.meanAfter = weightedPoints / weight;
     row.ratio = baseline > 0 ? row.meanAfter / baseline : null;
+    row.adjusted = baseline > 0 ? (weightedPoints + PRIOR_STRETCHES * baseline) / ((weight + PRIOR_STRETCHES) * baseline) : null;
+    row.evidence = evidenceOf(row);
+    row.followedLow = wilsonLow(row.followed, row.complete);
     ranked.push(row);
   }
-  ranked.sort((a, b) => (b.ratio ?? -1) - (a.ratio ?? -1) ||
-    b.followed / b.complete - a.followed / a.complete || b.weight - a.weight || a.tag.localeCompare(b.tag));
+  // Rows with enough to weigh first, by the adjusted multiple; early rows after
+  // them, however high their number.
+  const tier = (r) => (r.evidence === 'early' ? 1 : 0);
+  ranked.sort((a, b) => tier(a) - tier(b) || (b.adjusted ?? -1) - (a.adjusted ?? -1) ||
+    b.followedLow - a.followedLow || b.weight - a.weight || a.tag.localeCompare(b.tag));
   notEnough.sort((a, b) => b.exposures - a.exposures || a.tag.localeCompare(b.tag));
   return { ranked, notEnough, baseline, totalPoints, hours, windowHours, who };
 }

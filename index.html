@@ -485,15 +485,28 @@ svg{display:block;flex:none}
 .winpick + .suspect,.winpick + .hint{margin-top:10px}
 .suspect-top{display:flex;align-items:baseline;gap:10px}
 .suspect-name{flex:1;font:600 19px/1.3 var(--round)}
-.suspect-ratio{font:700 22px/1 var(--round)}
+.suspect-ratio{display:flex;flex-direction:column;align-items:flex-end;flex:none;color:var(--ink)}
+.suspect-ratio b{font:700 22px/1 var(--round)}
+.suspect-ratio small{margin-top:3px;color:var(--ink2);font-size:12px;line-height:1}
 .suspect-line{margin-top:4px;color:var(--ink2);font-size:15px}
+.suspect-line + .suspect-line{margin-top:2px}
+/* How much there is to go on: one, two, or three dots and a word. Early rows
+   sit under their own note, their number quieter. */
+.evidence{font-weight:600;color:var(--ink)}
+.dots{display:inline-flex;gap:3px;margin-right:6px;vertical-align:middle}
+.dots i{width:7px;height:7px;border-radius:50%;border:1.5px solid var(--sym)}
+.dots i.on{background:var(--sym)}
+.suspect[data-evidence="early"] .suspect-ratio b{color:var(--ink3);font-weight:600}
+.suspect[data-evidence="early"] .evidence{color:var(--ink2)}
+.tier-label{margin:14px 0 2px;color:var(--ink2);font-size:14px;font-style:italic}
 /* Individual foods: secondary to the allergens above, and says so. */
 .indiv{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
 .indiv-title{font:600 17px/1.3 var(--round)}
 .indiv .pathway-sub{margin-top:12px;color:var(--ink2);font-size:15px;font-weight:600}
 .indiv .suspect{padding:9px 0}
 .indiv .suspect-name{font:600 16px/1.3 var(--sans)}
-.indiv .suspect-ratio{font:600 17px/1 var(--round);color:var(--ink2)}
+.indiv .suspect-ratio{color:var(--ink2)}
+.indiv .suspect-ratio b{font:600 17px/1 var(--round)}
 .indiv .suspect-line{font-size:14px}
 .older{margin-top:10px}
 .older-sub{margin:10px 0 2px;color:var(--ink2);font-size:14px;font-style:italic}
@@ -546,6 +559,7 @@ details[open].more-card > summary::after{transform:translateY(2px) rotate(-135de
 .report table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.35}
 .report th{padding:6px 12px 6px 0;border-bottom:1px solid var(--ink3);color:var(--ink2);font-weight:600;text-align:left;white-space:nowrap}
 .report td{padding:6px 12px 6px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.report tr.early td{color:var(--ink2)}
 .report .nowrap{white-space:nowrap}
 .report .indiv{margin-top:16px}
 .report .indiv-title{margin-top:0;font-size:16px}
@@ -699,7 +713,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 17;
+const BUILD = 18;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -1408,14 +1422,35 @@ const PATHWAY_NOTE = {
   baby: () => 'Food eaten directly acts faster, typically within 1 to 4 hours.',
 };
 const fmtRatio = (x) => `${x >= 10 ? Math.round(x) : x.toFixed(1)}x`;
-const exposureText = (row) => `${plural(row.exposures, 'exposure')}${row.possible ? ` (${row.possible} possible)` : ''}`;
+const exposureText = (row) => `${plural(row.exposures, 'exposure')} on ${plural(row.days, 'day')}${row.possible ? ` (${row.possible} possible)` : ''}`;
 
-function suspectFacts(row, hours) {
-  return [
-    exposureText(row),
-    `symptoms followed within ${hours}h after ${row.followed} of ${row.complete}`,
-    row.ratio == null ? 'no symptoms logged in this range' : `load after exposure ${fmtRatio(row.ratio)} baseline`,
-  ];
+// ---- how a suspect row reads ------------------------------------------------------------
+// Plain words beside every number, so a tired parent needs no key: how much
+// there is to go on (dots and a word), how often symptoms followed, and how
+// symptoms after the food compare with usual. The multiple shown is the
+// adjusted one (see PRIOR_STRETCHES): it starts at 1x and earns its way out.
+const EVIDENCE_WORDS = { early: 'Early', building: 'Taking shape', established: 'Well established' };
+const EVIDENCE_DOTS = { early: 1, building: 2, established: 3 };
+const EARLY_NOTE = 'Early: fewer than 3 exposures on 3 separate days. Too few to judge yet.';
+const evidenceHtml = (row) => `<span class="evidence"><span class="dots" aria-hidden="true">${[1, 2, 3].map((n) =>
+  `<i${n <= EVIDENCE_DOTS[row.evidence] ? ' class="on"' : ''}></i>`).join('')}</span>${EVIDENCE_WORDS[row.evidence]}</span>`;
+const followedText = (row, hours) => `Symptoms followed ${row.followed} of ${row.complete} ${row.complete === 1 ? 'time' : 'times'} within ${hours}h`
+  + (row.watching ? `; ${row.watching} still inside the window` : '');
+const ratioHtml = (row) => (row.adjusted == null ? '' : `<span class="suspect-ratio"><b>${fmtRatio(row.adjusted)}</b><small>usual</small></span>`);
+
+function suspectRowHtml(row, name, hours) {
+  return `<div class="suspect" data-evidence="${row.evidence}">
+    <div class="suspect-top"><span class="suspect-name">${esc(name)}</span>${ratioHtml(row)}</div>
+    <p class="suspect-line">${evidenceHtml(row)} · ${esc(exposureText(row))}</p>
+    <p class="suspect-line">${esc(row.adjusted == null ? 'No symptoms logged in this range' : followedText(row, hours))}</p>
+  </div>`;
+}
+
+// Rows with enough to weigh, then the early ones under their own note.
+function suspectRowsHtml(r, name) {
+  const rows = (list) => list.map((row) => suspectRowHtml(row, name(row), r.windowHours)).join('');
+  const early = r.ranked.filter((x) => x.evidence === 'early');
+  return rows(r.ranked.filter((x) => x.evidence !== 'early')) + (early.length ? `<p class="tier-label">${EARLY_NOTE}</p>${rows(early)}` : '');
 }
 
 // The window picker for one pathway; the baby's is the shorter list.
@@ -1427,12 +1462,7 @@ function windowChipsHtml(hours, who = 'parent') {
 
 function pathwayHtml(r, { titled }) {
   const hours = r.windowHours;
-  const ranked = r.ranked.map((row) => `
-    <div class="suspect">
-      <div class="suspect-top"><span class="suspect-name">${esc(tagLabel(S.settings, row.tag))}</span>${row.ratio == null ? '' : `<span class="suspect-ratio">${fmtRatio(row.ratio)}</span>`}</div>
-      <p class="suspect-line">${esc(suspectFacts(row, hours).join(' · '))}</p>
-      ${row.watching ? `<p class="fine">${plural(row.watching, 'more exposure is', 'more exposures are')} still inside the ${hours}h window.</p>` : ''}
-    </div>`).join('');
+  const ranked = suspectRowsHtml(r, (row) => tagLabel(S.settings, row.tag));
   const few = r.notEnough.map((row) =>
     `<li>${esc(tagLabel(S.settings, row.tag))}: ${esc(exposureText(row))}${row.watching ? `, ${row.watching} still inside the window` : ''}</li>`).join('');
   return `<div class="pathway" data-who="${r.who}">
@@ -1448,7 +1478,7 @@ function suspectsCardHtml(fromDay) {
   const solids = hasBabyFood(S);
   return `<section class="card suspects">
     <h2 class="chart-title">Suspects</h2>
-    <p class="fine">For each food, the symptom points in the hours after it was eaten, compared with a usual stretch of the same length in this range. Possibly hidden exposures count half.${solids ? ` Food reaches ${esc(babyLabel())} two ways, so each way is scored on its own; the same food can show up in both.` : ''}</p>
+    <p class="fine">For each food, how symptoms ran in the hours after eating it, compared with usual: 1x is no different, 2x is twice the symptoms. Every food starts at 1x and moves as exposures come in, so it takes several before one can look very high or very low. Possibly hidden exposures count half.${solids ? ` Food reaches ${esc(babyLabel())} two ways, so each way is scored on its own; the same food can show up in both.` : ''}</p>
     ${pathwayHtml(r.parent, { titled: solids })}
     ${solids ? pathwayHtml(r.baby, { titled: true }) : ''}
     ${indivSectionHtml(fromDay, solids)}
@@ -1473,20 +1503,7 @@ const foodLabel = (row) => itemResolver(S.foodItems)(row.item)?.label || 'Food';
 const termWord = (row) => `“${row.term}”`;
 const indivNone = (hours) => `No food has ${TERM_MIN} exposures on ${TERM_MIN} different days with a finished ${hours}h window in this range yet.`;
 
-function termFacts(row, hours) {
-  return [
-    `${plural(row.exposures, 'exposure')} on ${plural(row.days, 'day')}`,
-    `symptoms followed within ${hours}h after ${row.followed} of ${row.complete}`,
-    row.ratio == null ? 'no symptoms logged in this range' : `load after exposure ${fmtRatio(row.ratio)} baseline`,
-    ...(row.watching ? [`${row.watching} still inside the window`] : []),
-  ];
-}
-
-const indivRowsHtml = (r, name) => r.ranked.map((row) => `
-    <div class="suspect">
-      <div class="suspect-top"><span class="suspect-name">${esc(name(row))}</span>${row.ratio == null ? '' : `<span class="suspect-ratio">${fmtRatio(row.ratio)}</span>`}</div>
-      <p class="suspect-line">${esc(termFacts(row, r.windowHours).join(' · '))}</p>
-    </div>`).join('');
+const indivRowsHtml = (r, name) => suspectRowsHtml(r, name);
 const moreHtml = (r, what) => (r.more ? `<p class="fine">${plural(r.more, `more ${what} clears`, `more ${what}s clear`)} the bar, below the top ${TERM_LIMIT}.</p>` : '');
 
 function indivPathwayHtml(ri, rw, { titled }) {
@@ -1933,20 +1950,23 @@ function reportHtml() {
       + `<td class="nowrap">${length}</td><td>${esc(p.note || '')}</td></tr>`;
   }).join('');
 
+  // One row per food: its name, how much there is to go on, how often symptoms
+  // followed, and the multiple of usual (the adjusted one, as in Trends).
+  const reportRow = (name, row) => `<tr${row.evidence === 'early' ? ' class="early"' : ''}><td>${esc(name)}</td>`
+    + `<td>${esc(exposureText(row))}, ${EVIDENCE_WORDS[row.evidence].toLowerCase()}</td>`
+    + `<td class="nowrap">${row.followed} of ${row.complete}</td><td class="nowrap">${row.adjusted == null ? 'no symptoms in range' : `${fmtRatio(row.adjusted)} usual`}</td></tr>`;
   // One suspects table per pathway; the baby's only once solids have started.
   const suspectTable = (r) => {
     const hours = r.windowHours;
-    const rows = r.ranked.map((row) => `<tr><td>${esc(tagLabel(S.settings, row.tag))}</td><td>${esc(exposureText(row))}</td>`
-      + `<td class="nowrap">${row.followed} of ${row.complete}</td><td>${row.ratio == null ? 'no symptoms in range' : `${fmtRatio(row.ratio)} baseline`}</td></tr>`).join('');
+    const rows = r.ranked.map((row) => reportRow(tagLabel(S.settings, row.tag), row)).join('');
     const few = r.notEnough.map((row) => `${tagLabel(S.settings, row.tag)} (${exposureText(row)})`).join(', ');
-    return `${rows ? table(['Food', 'Exposures', `Followed within ${hours}h`, 'Load after exposure'], rows)
+    return `${rows ? table(['Food', 'Exposures', `Followed within ${hours}h`, 'Symptoms after it'], rows)
       : `<p class="report-meta">No food had two exposures with a finished ${hours}-hour window in this range.</p>`}
       ${few ? `<p class="report-meta">Not enough data yet: ${esc(few)}.</p>` : ''}`;
   };
   // Individual foods per pathway under the allergen tables, older entries' words after them.
-  const indivTable = (r, first, name) => table([first, 'Exposures', `Followed within ${r.windowHours}h`, 'Load after exposure'],
-    r.ranked.map((row) => `<tr><td>${esc(name(row))}</td><td>${esc(`${plural(row.exposures, 'exposure')} on ${plural(row.days, 'day')}`)}</td>`
-      + `<td class="nowrap">${row.followed} of ${row.complete}</td><td>${row.ratio == null ? 'no symptoms in range' : `${fmtRatio(row.ratio)} baseline`}</td></tr>`).join(''));
+  const indivTable = (r, first, name) => table([first, 'Exposures', `Followed within ${r.windowHours}h`, 'Symptoms after it'],
+    r.ranked.map((row) => reportRow(name(row), row)).join(''));
   const indivBlock = (ri, rw) => (ri.ranked.length ? indivTable(ri, 'Food', foodLabel) : `<p class="report-meta">${esc(indivNone(ri.windowHours))}</p>`)
     + (rw.ranked.length ? `<p class="report-meta older-sub">${esc(OLDER_ABOUT)}:</p>${indivTable(rw, 'Word', termWord)}` : '');
   const suspectIntro = solids
@@ -1975,7 +1995,7 @@ function reportHtml() {
     </section>
     <section class="keep">
       <h2>Suspects</h2>
-      <p class="report-meta">${suspectIntro} Possibly hidden exposures count half, and a food needs two exposures to be listed.</p>
+      <p class="report-meta">${suspectIntro} 1x is no different from usual; 2x is twice the symptoms. Every food starts at 1x and moves as exposures come in, so it takes several before one can look very high or very low. Rows marked early have fewer than 3 exposures on 3 separate days and are too few to judge. Possibly hidden exposures count half, and a food needs two exposures to be listed.</p>
       ${solids ? `<h3>Via breast milk (${sus.parent.windowHours}h window)</h3>` : ''}
       ${suspectTable(sus.parent)}
       ${solids ? `<h3>${esc(babyLabel())}'s own food (${sus.baby.windowHours}h window)</h3>${suspectTable(sus.baby)}` : ''}
