@@ -69,8 +69,12 @@ own files so it works offline; the diary itself lives only in localStorage.
 - **Trends:** daily symptom load with one track per phase food behind the
   line, per-category strips, and the suspects list, scored per pathway once
   the baby has eaten anything: food reaching the baby through breast milk uses
-  the suspects window (default 24h), the baby's own food a faster one (default
-  4h, options 1/2/4/8, both editable inline and in More). The same food can
+  the suspects window (default 24h; 6h to 7 days, since some reactions, skin
+  especially, take longer than three days), the baby's own food a faster one
+  (default 4h, options 1/2/4/8, both editable inline and in More). A window of
+  four days or more shows a note: consecutive windows overlap so much that a
+  food eaten most days holds nearly every symptom, so everything drifts toward
+  1x; good for slow reactions, weak at telling foods apart. The same food can
   appear under both with different scores. Each row reads in plain words: how
   much there is to go on (one, two, or three dots with Early, Taking shape, or
   Well established), how often symptoms followed, and the multiple of usual.

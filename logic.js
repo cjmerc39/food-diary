@@ -3,9 +3,17 @@
 // Nothing here touches the DOM, storage, or the clock: callers pass `now` in.
 
 export const STATE_VERSION = 2;
-export const WINDOW_CHOICES = [6, 12, 24, 48, 72];
+// Through breast milk, most reactions show within a day or two; some, skin
+// especially, take longer, so the window runs up to a week.
+export const WINDOW_CHOICES = [6, 12, 24, 48, 72, 96, 120, 168];
 // Food the baby eats directly reacts faster than food reaching the milk: 1 to 4 hours, typically.
 export const DIRECT_WINDOW_CHOICES = [1, 2, 4, 8];
+// A window in words: hours up to 72h, days from there ("5 days"); the chip form is "5d".
+export const windowText = (h) => (h >= 96 ? `${h / 24} days` : `${h}h`);
+export const windowChip = (h) => (h >= 96 ? `${h / 24}d` : `${h}h`);
+// Past three days, consecutive windows overlap so much that a food eaten most
+// days holds nearly every symptom, and everything drifts toward 1x.
+export const LONG_WINDOW = 96;
 
 // Two exposure pathways: what the parent eats reaches the baby through breast
 // milk; once solids start, the baby's own food is the second. Older entries

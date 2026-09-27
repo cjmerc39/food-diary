@@ -624,6 +624,26 @@ test('wilsonLow is the fraction the data can vouch for', () => {
   assert.ok(L.wilsonLow(0, 5) === 0 || L.wilsonLow(0, 5) < 1e-12);
 });
 
+test('the suspects window runs up to a week, in words past three days', () => {
+  assert.deepEqual(L.WINDOW_CHOICES, [6, 12, 24, 48, 72, 96, 120, 168]);
+  assert.equal(L.normalizeState({ v: 2, settings: { windowHours: 168 } }).settings.windowHours, 168);
+  assert.equal(L.normalizeState({ v: 2, settings: { windowHours: 144 } }).settings.windowHours, 24, 'off-list values still fall back');
+  assert.deepEqual([72, 96, 120, 168].map(L.windowText), ['72h', '4 days', '5 days', '7 days']);
+  assert.deepEqual([24, 96, 168].map(L.windowChip), ['24h', '4d', '7d']);
+  assert.equal(L.LONG_WINDOW, 96);
+  // A five-day window: an exposure four days before now is still watching, one six days before is scored.
+  const r = L.suspects(diary({
+    foodLog: [food('a', '2026-09-01T08:00', ['dairy']), food('b', '2026-09-03T08:00', ['dairy']), food('c', '2026-09-06T08:00', ['dairy'])],
+    symptomLog: [sym('s1', '2026-09-04T08:00', 'crying', 2)],   // 3 days after a: inside a 5-day window, outside 48h
+  }), { from: '2026-09-01T00:00', to: '2026-09-10T00:00', windowHours: 120, now: '2026-09-10T00:00' });
+  const [dairy] = r.ranked;
+  assert.deepEqual([dairy.exposures, dairy.complete, dairy.watching, dairy.followed], [3, 2, 1, 2]);
+  assert.ok(near(r.baseline, (2 / 216) * 120), 'the baseline scales to the window');
+  const short = L.suspects(diary({ foodLog: [food('a', '2026-09-01T08:00', ['dairy']), food('b', '2026-09-03T08:00', ['dairy'])], symptomLog: [sym('s1', '2026-09-04T08:00', 'crying', 2)] }),
+    { from: '2026-09-01T00:00', to: '2026-09-10T00:00', windowHours: 48, now: '2026-09-10T00:00' });
+  assert.equal(short.ranked[0].followed, 1, 'within 48h only the later exposure is followed; the five-day window caught the earlier one too');
+});
+
 // ---- two pathways: through breast milk, and the baby's own food ---------------
 
 test('who: missing means the parent, and only baby means baby', () => {

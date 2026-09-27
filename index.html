@@ -475,9 +475,9 @@ svg{display:block;flex:none}
 .strip .grid{stroke:var(--line);stroke-width:1}
 .strip .bar{fill:var(--sym)}
 .suspects{margin-bottom:12px}
-.winpick{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin:10px 0 4px}
+.winpick{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:10px 0 4px}
 .winpick .chip{padding:0}
-.winpick.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.win-note{margin:8px 2px 0;color:var(--ink2);font-size:14px}
 /* suspects, one block per pathway */
 .pathway + .pathway{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
 .pathway-title{margin-top:12px;font:600 17px/1.3 var(--round)}
@@ -703,7 +703,7 @@ import {
   standaloneHeight, WINDOW_CHOICES, TREND_RANGES, daysBetween, slugify,
   trendDays, trendSeries, phaseBands, phaseTagSlots, suspects, rangeEntries,
   addCustomTag, tagInUse, mergeStates, readBackup, APP_ID, backupReminder, dayGlance, dayRest, welcomeVariant, setItem,
-  eventWho, hasBabyFood, WHO, DIRECT_WINDOW_CHOICES, suspectsByPathway,
+  eventWho, hasBabyFood, WHO, DIRECT_WINDOW_CHOICES, suspectsByPathway, windowText, windowChip, LONG_WINDOW,
   DAY_CATS, STOOL_COLORS, CAUTION_COLORS, MAX_STOOL_COUNT, stoolCount, termSuspectsByPathway, TERM_MIN, TERM_LIMIT,
 } from './logic.js';
 
@@ -713,7 +713,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 18;
+const BUILD = 19;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -1434,7 +1434,7 @@ const EVIDENCE_DOTS = { early: 1, building: 2, established: 3 };
 const EARLY_NOTE = 'Early: fewer than 3 exposures on 3 separate days. Too few to judge yet.';
 const evidenceHtml = (row) => `<span class="evidence"><span class="dots" aria-hidden="true">${[1, 2, 3].map((n) =>
   `<i${n <= EVIDENCE_DOTS[row.evidence] ? ' class="on"' : ''}></i>`).join('')}</span>${EVIDENCE_WORDS[row.evidence]}</span>`;
-const followedText = (row, hours) => `Symptoms followed ${row.followed} of ${row.complete} ${row.complete === 1 ? 'time' : 'times'} within ${hours}h`
+const followedText = (row, hours) => `Symptoms followed ${row.followed} of ${row.complete} ${row.complete === 1 ? 'time' : 'times'} within ${windowText(hours)}`
   + (row.watching ? `; ${row.watching} still inside the window` : '');
 const ratioHtml = (row) => (row.adjusted == null ? '' : `<span class="suspect-ratio"><b>${fmtRatio(row.adjusted)}</b><small>usual</small></span>`);
 
@@ -1456,8 +1456,9 @@ function suspectRowsHtml(r, name) {
 // The window picker for one pathway; the baby's is the shorter list.
 function windowChipsHtml(hours, who = 'parent') {
   const choices = who === 'baby' ? DIRECT_WINDOW_CHOICES : WINDOW_CHOICES;
-  return `<div class="winpick${choices.length === 4 ? ' four' : ''}" role="group" aria-label="${who === 'baby' ? `Hours after ${esc(babyLabel())} eats` : 'Hours after eating'}">${choices.map((h) =>
-    `<button class="chip" data-act="${who === 'baby' ? 'direct-window' : 'window'}" data-hours="${h}" aria-pressed="${hours === h}">${h}h</button>`).join('')}</div>`;
+  return `<div class="winpick" role="group" aria-label="${who === 'baby' ? `Time after ${esc(babyLabel())} eats` : 'Time after eating'}">${choices.map((h) =>
+    `<button class="chip" data-act="${who === 'baby' ? 'direct-window' : 'window'}" data-hours="${h}" aria-pressed="${hours === h}" aria-label="${esc(windowText(h))}">${windowChip(h)}</button>`).join('')}</div>${
+    hours >= LONG_WINDOW ? `<p class="win-note">A window this long overlaps a lot: a food eaten most days holds nearly every symptom, so everything drifts toward 1x. Good for slow reactions, weak at telling foods apart.</p>` : ''}`;
 }
 
 function pathwayHtml(r, { titled }) {
@@ -1468,7 +1469,7 @@ function pathwayHtml(r, { titled }) {
   return `<div class="pathway" data-who="${r.who}">
     ${titled ? `<h3 class="pathway-title">${esc(PATHWAY_TITLE[r.who]())}</h3><p class="fine">${esc(PATHWAY_NOTE[r.who]())}</p>` : ''}
     ${windowChipsHtml(hours, r.who)}
-    ${ranked || `<p class="hint">No food has two exposures with a finished ${hours}h window in this range yet.</p>`}
+    ${ranked || `<p class="hint">No food has two exposures with a finished ${windowText(hours)} window in this range yet.</p>`}
     ${few ? `<details class="more-card"><summary>Not enough data yet (${r.notEnough.length})</summary><ul class="plain">${few}</ul></details>` : ''}
   </div>`;
 }
@@ -1501,7 +1502,7 @@ const INDIV_ABOUT = `Each food you pick, scored the same way as the allergens. A
 const OLDER_ABOUT = 'Older entries, from before foods were picked, read word by word';
 const foodLabel = (row) => itemResolver(S.foodItems)(row.item)?.label || 'Food';
 const termWord = (row) => `“${row.term}”`;
-const indivNone = (hours) => `No food has ${TERM_MIN} exposures on ${TERM_MIN} different days with a finished ${hours}h window in this range yet.`;
+const indivNone = (hours) => `No food has ${TERM_MIN} exposures on ${TERM_MIN} different days with a finished ${windowText(hours)} window in this range yet.`;
 
 const indivRowsHtml = (r, name) => suspectRowsHtml(r, name);
 const moreHtml = (r, what) => (r.more ? `<p class="fine">${plural(r.more, `more ${what} clears`, `more ${what}s clear`)} the bar, below the top ${TERM_LIMIT}.</p>` : '');
@@ -1511,7 +1512,7 @@ function indivPathwayHtml(ri, rw, { titled }) {
   const foods = indivRowsHtml(ri, foodLabel);
   const words = indivRowsHtml(rw, termWord);
   return `<div class="indiv-pathway" data-who="${ri.who}">
-    ${titled ? `<p class="pathway-sub">${esc(PATHWAY_TITLE[ri.who]())}, ${hours}h window</p>` : ''}
+    ${titled ? `<p class="pathway-sub">${esc(PATHWAY_TITLE[ri.who]())}, ${windowText(hours)} window</p>` : ''}
     ${foods || `<p class="hint">${esc(indivNone(hours))}</p>`}${moreHtml(ri, 'food')}
     ${words ? `<div class="older" data-who="${rw.who}"><p class="older-sub">${esc(OLDER_ABOUT)}</p>${words}${moreHtml(rw, 'word')}</div>` : ''}
   </div>`;
@@ -1815,7 +1816,7 @@ function viewMore() {
       ${row('edit-foods', 'Foods', foodsStatus())}
       ${row('edit-tags', 'Allergen tags', `${tags.length - hidden} shown${hidden ? `, ${hidden} hidden` : ''}`)}
       <div class="row row-block">
-        <span class="row-main">Suspects window<span class="row-sub">How many hours after you eat a food count as "followed by symptoms". Through breast milk, reactions can take up to a day.</span></span>
+        <span class="row-main">Suspects window<span class="row-sub">How long after you eat a food counts as "followed by symptoms". Through breast milk, most reactions show within a day or two; some, skin especially, take longer.</span></span>
         ${windowChipsHtml(S.settings.windowHours)}
       </div>
       <div class="row row-block">
@@ -1960,18 +1961,18 @@ function reportHtml() {
     const hours = r.windowHours;
     const rows = r.ranked.map((row) => reportRow(tagLabel(S.settings, row.tag), row)).join('');
     const few = r.notEnough.map((row) => `${tagLabel(S.settings, row.tag)} (${exposureText(row)})`).join(', ');
-    return `${rows ? table(['Food', 'Exposures', `Followed within ${hours}h`, 'Symptoms after it'], rows)
-      : `<p class="report-meta">No food had two exposures with a finished ${hours}-hour window in this range.</p>`}
+    return `${rows ? table(['Food', 'Exposures', `Followed within ${windowText(hours)}`, 'Symptoms after it'], rows)
+      : `<p class="report-meta">No food had two exposures with a finished ${windowText(hours)} window in this range.</p>`}
       ${few ? `<p class="report-meta">Not enough data yet: ${esc(few)}.</p>` : ''}`;
   };
   // Individual foods per pathway under the allergen tables, older entries' words after them.
-  const indivTable = (r, first, name) => table([first, 'Exposures', `Followed within ${r.windowHours}h`, 'Symptoms after it'],
+  const indivTable = (r, first, name) => table([first, 'Exposures', `Followed within ${windowText(r.windowHours)}`, 'Symptoms after it'],
     r.ranked.map((row) => reportRow(name(row), row)).join(''));
   const indivBlock = (ri, rw) => (ri.ranked.length ? indivTable(ri, 'Food', foodLabel) : `<p class="report-meta">${esc(indivNone(ri.windowHours))}</p>`)
     + (rw.ranked.length ? `<p class="report-meta older-sub">${esc(OLDER_ABOUT)}:</p>${indivTable(rw, 'Word', termWord)}` : '');
   const suspectIntro = solids
-    ? `Symptom points in the hours after each food was eaten, compared with a usual stretch of the same length in this range: ${sus.parent.windowHours} hours for food reaching ${esc(name || 'the baby')} through breast milk, ${sus.baby.windowHours} hours for food ${esc(name || 'the baby')} ate directly. The same food can appear under both.`
-    : `Symptom points in the ${sus.parent.windowHours} hours after eating each food, compared with a usual ${sus.parent.windowHours}-hour stretch in this range.`;
+    ? `Symptom points in the time after each food was eaten, compared with a usual stretch of the same length in this range: ${windowText(sus.parent.windowHours)} for food reaching ${esc(name || 'the baby')} through breast milk, ${windowText(sus.baby.windowHours)} for food ${esc(name || 'the baby')} ate directly. The same food can appear under both.`
+    : `Symptom points in the ${windowText(sus.parent.windowHours)} after eating each food, compared with a usual stretch of the same length in this range.`;
 
   const logRows = entries.map((r) => `<tr><td class="nowrap">${esc(fmtDate(r.e.ts, { weekday: true }))}</td><td class="nowrap">${esc(fmtTime(r.e.ts))}</td>`
     + `<td>${r.kind === 'food' ? 'Food' : 'Symptom'}</td><td class="nowrap">${r.kind === 'food' ? esc(whoLabel(eventWho(r.e), { report: true })) : ''}</td>`
@@ -1996,16 +1997,16 @@ function reportHtml() {
     <section class="keep">
       <h2>Suspects</h2>
       <p class="report-meta">${suspectIntro} 1x is no different from usual; 2x is twice the symptoms. Every food starts at 1x and moves as exposures come in, so it takes several before one can look very high or very low. Rows marked early have fewer than 3 exposures on 3 separate days and are too few to judge. Possibly hidden exposures count half, and a food needs two exposures to be listed.</p>
-      ${solids ? `<h3>Via breast milk (${sus.parent.windowHours}h window)</h3>` : ''}
+      ${solids ? `<h3>Via breast milk (${windowText(sus.parent.windowHours)} window)</h3>` : ''}
       ${suspectTable(sus.parent)}
-      ${solids ? `<h3>${esc(babyLabel())}'s own food (${sus.baby.windowHours}h window)</h3>${suspectTable(sus.baby)}` : ''}
+      ${solids ? `<h3>${esc(babyLabel())}'s own food (${windowText(sus.baby.windowHours)} window)</h3>${suspectTable(sus.baby)}` : ''}
       <div class="indiv">
         <h3 class="indiv-title">Individual foods</h3>
         <p class="report-meta indiv-caveat">${esc(INDIV_CAVEAT)}</p>
         <p class="report-meta">${esc(INDIV_ABOUT)}</p>
-        ${solids ? `<h3>Via breast milk (${indiv.items.parent.windowHours}h window)</h3>` : ''}
+        ${solids ? `<h3>Via breast milk (${windowText(indiv.items.parent.windowHours)} window)</h3>` : ''}
         ${indivBlock(indiv.items.parent, indiv.words.parent)}
-        ${solids ? `<h3>${esc(babyLabel())}'s own food (${indiv.items.baby.windowHours}h window)</h3>${indivBlock(indiv.items.baby, indiv.words.baby)}` : ''}
+        ${solids ? `<h3>${esc(babyLabel())}'s own food (${windowText(indiv.items.baby.windowHours)} window)</h3>${indivBlock(indiv.items.baby, indiv.words.baby)}` : ''}
       </div>
       <p class="caveat">Correlation, not diagnosis. Coincidence puts innocent foods here.</p>
     </section>
