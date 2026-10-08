@@ -717,7 +717,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 24;
+const BUILD = 25;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -1514,14 +1514,24 @@ const asideNames = (rows) => {
 };
 const everydayText = (r, all = false) => `Eaten too often, or too evenly, to compare against anything: ${all ? r.everyday.map(rowName).join(', ') : asideNames(r.everyday)}.`;
 const fewText = (r) => `${r.few.length === 1 ? '1 food has' : `${r.few.length} foods have`} not been eaten on ${STANDOUT_MIN_EATEN} separate days yet, so ${r.few.length === 1 ? 'it' : 'they'} cannot be compared.`;
-const asideHtml = (cls, text, rows) => `<details class="aside ${cls}"><summary>${esc(text)}</summary>
-    <ul class="plain aside-list">${rows.map((x) => `<li>${esc(rowName(x))}: eaten on ${esc(dayWord(x.eatenDays))}</li>`).join('')}</ul></details>`;
+// A food adopted partway through and eaten ever since: the days to compare
+// against would all come from before it, which compares two stretches of
+// time, not a food.
+const adoptedText = (r) => (r.adopted.length === 1
+  ? `${rowName(r.adopted[0])}: only eaten since ${dayShort(r.adopted[0].firstDay)}, so the only days to compare against come from before that.`
+  : `${r.adopted.length} foods were only eaten from a point on, so the days to compare against all come from before that point.`);
+const adoptedItem = (x) => `${rowName(x)}: only eaten since ${dayShort(x.firstDay)}, on ${dayWord(x.eatenDays)}`;
+const eatenItem = (x) => `${rowName(x)}: eaten on ${dayWord(x.eatenDays)}`;
+const asideHtml = (cls, text, rows, item = eatenItem) => `<details class="aside ${cls}"><summary>${esc(text)}</summary>
+    <ul class="plain aside-list">${rows.map((x) => `<li>${esc(item(x))}</li>`).join('')}</ul></details>`;
 function standoutHtml(r, rangeName) {
   const rows = r.standing.length ? r.standing.map((row) => `<details class="standout" data-key="${esc(row.key)}"><summary>${esc(standoutText(row))}</summary>
     <div class="dates">${standoutDatesText(row).map((t) => `<p>${esc(t)}</p>`).join('')}${row.kind === 'name' ? ''
       : `<button class="chip" data-act="mark-safe" data-keys="${esc(safeKeys(row).join(' '))}">Mark ${esc(rowName(row))} safe</button>`}</div></details>`).join('')
     : `<p class="hint standout-none">${esc(standoutEmpty(r, rangeName))}</p>`;
-  return rows + (r.everyday.length ? asideHtml('everyday', everydayText(r), r.everyday) : '') + (r.few.length ? asideHtml('fewdays', fewText(r), r.few) : '');
+  return rows + (r.everyday.length ? asideHtml('everyday', everydayText(r), r.everyday) : '')
+    + (r.adopted.length ? asideHtml('adopted', adoptedText(r), r.adopted, adoptedItem) : '')
+    + (r.few.length ? asideHtml('fewdays', fewText(r), r.few) : '');
 }
 function safeLineHtml() {
   const list = [...safeTags().map((t) => ({ kind: 'tag', id: t.id, label: t.label })), ...safeFoods().map((it) => ({ kind: 'food', id: it.id, label: it.label }))];
@@ -2089,7 +2099,7 @@ function reportHtml() {
       <p class="report-meta">Each food's days against the other days, over this range, from when symptom tracking began: the gut score of the day it was eaten and the two after, on average, and of the days outside those. ${STANDOUT_RULE} ${CAUSE_NOTE}</p>
       ${stands.map((r) => `${stands.length > 1 ? `<h3>${esc(PATHWAY_WORDS[r.who]())}</h3>` : ''}${r.standing.length
         ? r.standing.map((row) => `<p class="standout-row">${esc(standoutText(row))}</p><p class="report-meta">${esc(standoutDatesText(row).join(' '))}</p>`).join('')
-        : `<p class="report-meta">${esc(standoutEmpty(r, rangeName))}</p>`}${r.everyday.length ? `<p class="report-meta">${esc(everydayText(r, true))}</p>` : ''}${r.few.length ? `<p class="report-meta">${esc(fewText(r))}</p>` : ''}`).join('')}
+        : `<p class="report-meta">${esc(standoutEmpty(r, rangeName))}</p>`}${r.everyday.length ? `<p class="report-meta">${esc(everydayText(r, true))}</p>` : ''}${r.adopted.length ? `<p class="report-meta">${esc(`Only eaten from a point on, so the days to compare against come from before it: ${r.adopted.map((x) => `${rowName(x)} (since ${dayShort(x.firstDay)})`).join(', ')}.`)}</p>` : ''}${r.few.length ? `<p class="report-meta">${esc(fewText(r))}</p>` : ''}`).join('')}
       ${safeFoods().length || safeTags().length ? `<p class="report-meta">Marked safe by the parent and left out: ${esc([...safeTags(), ...safeFoods()].map((x) => x.label).join(', '))}.</p>` : ''}
     </section>
     <section class="keep">

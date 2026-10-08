@@ -714,11 +714,17 @@ export function statusNow(state, { fromDay, today }) {
 // after. The shadow days' gut score, on average, against the score of the
 // tracked days outside every shadow; a day counts once however many shadows
 // overlap it, and both sides are days with entries. A food needs
-// STANDOUT_MIN_EATEN days eaten and STANDOUT_MIN_NOT tracked days outside its
-// shadow. The rest are listed as what they are: eaten on too few separate
-// days yet (`few`), or eaten so often or so evenly that the shadow covers
-// nearly everything and there is nothing to compare against (`everyday`).
-// Every row is in exactly one of compared, everyday, or few. Foods and tags
+// STANDOUT_MIN_EATEN days eaten, STANDOUT_MIN_NOT tracked days outside its
+// shadow, and STANDOUT_MIN_AFTER of those outside days after the day it was
+// first eaten. That last guard is the pre-tracking bug in miniature: a food
+// adopted partway through and eaten ever since would otherwise be compared
+// against the stretch of time before she started it, which compares two
+// periods, not a food. The rest are listed as what they are: eaten on too few
+// separate days yet (`few`); eaten so often or so evenly that the shadow
+// covers nearly everything and there is nothing to compare against
+// (`everyday`); or only eaten from a point on, with the days to compare
+// against all before it (`adopted`). Every row is in exactly one of
+// compared, everyday, few, or adopted. Foods and tags
 // she marked safe are left out. A food stands out when, for every time it was
 // eaten, its own three days were heavier than the average day outside, and the
 // shadow as a whole is higher by STANDOUT_GAP or more, so one rough stretch
@@ -726,11 +732,12 @@ export function statusNow(state, { fromDay, today }) {
 // make rows appear: on most diaries nothing stands out, and that is a real
 // answer. Two names with exactly the same eaten days (a tag and its food, or
 // two foods always eaten together) are one row naming both.
-//   row: { key, kind, label, id?, also: [{ kind, label, id? }], who, eatenDays, afterDays, notDays,
+//   row: { key, kind, label, id?, also: [{ kind, label, id? }], who, firstDay, eatenDays, afterDays, notDays, notAfter,
 //          avgAfter, avgNot, gap, heavier, dates: [{ day, score, possible }], after: [{ day, score, eaten }] }
 export const SHADOW_DAYS = 3;
 export const STANDOUT_MIN_EATEN = 3;
 export const STANDOUT_MIN_NOT = 5;
+export const STANDOUT_MIN_AFTER = 3;   // comparison days after the first day eaten
 // The gap floor, in gut score points between the two averages. The score's
 // smallest step is one severity level in one symptom, or the mucus flag: 1
 // point. A floor of 1.5 asks for more than any single one-step change on
@@ -773,7 +780,7 @@ const KIND_ORDER = { tag: 0, food: 1, name: 2 };
 export function standingOut(state, { fromDay, today, who }) {
   const start = trackingStart(state);
   const from = start && start > fromDay ? start : fromDay;
-  const base = { who, from, trackingStart: start, loggedDays: 0, enough: false, usual: 0, standing: [], everyday: [], few: [], compared: 0, rows: [] };
+  const base = { who, from, trackingStart: start, loggedDays: 0, enough: false, usual: 0, standing: [], everyday: [], few: [], adopted: [], compared: 0, rows: [] };
   if (!start || from > today) return base;
   const days = loggedDays(state, from, today);
   const safeTags = safeTagsOf(state);
@@ -795,13 +802,15 @@ export function standingOut(state, { fromDay, today, who }) {
     const dates = eaten.map((day) => ({ day, score: days.get(day) || 0, possible: g.days.get(day) }));
     const after = shadowOf(eaten, days);
     const shadowed = new Set(after.map((d) => d.day));
-    const notScores = [...days].filter(([day]) => !shadowed.has(day)).map(([, score]) => score);
+    const outside = [...days].filter(([day]) => !shadowed.has(day));
+    const notScores = outside.map(([, score]) => score);
+    const notAfter = outside.filter(([day]) => day > eaten[0]).length;
     const avgAfter = avg(after.map((d) => d.score)), avgNot = avg(notScores);
     // Each eating on its own: its day and the two after, against the days outside.
     const heavier = eaten.filter((d) => avg(shadowOf([d], days).map((x) => x.score)) > avgNot).length;
     rows.push({
-      key: g.key, kind: g.kind, label: g.label, id: g.id, also: [], who,
-      eatenDays: dates.length, afterDays: after.length, notDays: notScores.length, avgAfter, avgNot, gap: avgAfter - avgNot,
+      key: g.key, kind: g.kind, label: g.label, id: g.id, also: [], who, firstDay: eaten[0],
+      eatenDays: dates.length, afterDays: after.length, notDays: notScores.length, notAfter, avgAfter, avgNot, gap: avgAfter - avgNot,
       heavier, dates, after,
     });
   }
@@ -817,13 +826,16 @@ export function standingOut(state, { fromDay, today, who }) {
   }
   const enough = days.size >= STANDOUT_MIN_EATEN + STANDOUT_MIN_NOT;
   const byMost = (a, b) => b.eatenDays - a.eatenDays || a.label.localeCompare(b.label);
-  const compared = kept.filter((r) => r.eatenDays >= STANDOUT_MIN_EATEN && r.notDays >= STANDOUT_MIN_NOT);
+  const enoughEaten = (r) => r.eatenDays >= STANDOUT_MIN_EATEN && r.notDays >= STANDOUT_MIN_NOT;
+  const compared = kept.filter((r) => enoughEaten(r) && r.notAfter >= STANDOUT_MIN_AFTER);
   const everyday = enough ? kept.filter((r) => r.eatenDays >= STANDOUT_MIN_EATEN && r.notDays < STANDOUT_MIN_NOT).sort(byMost) : [];
   const few = enough ? kept.filter((r) => r.eatenDays < STANDOUT_MIN_EATEN).sort(byMost) : [];
+  const adopted = enough ? kept.filter((r) => enoughEaten(r) && r.notAfter < STANDOUT_MIN_AFTER)
+    .sort((a, b) => (a.firstDay < b.firstDay ? -1 : a.firstDay > b.firstDay ? 1 : 0) || a.label.localeCompare(b.label)) : [];
   const standing = compared.filter((r) => r.gap >= STANDOUT_GAP && r.heavier === r.eatenDays)
     .sort((a, b) => b.gap - a.gap || b.eatenDays - a.eatenDays || a.label.localeCompare(b.label))
     .slice(0, STANDOUT_LIMIT);
-  return { ...base, loggedDays: days.size, enough, usual: avg([...days.values()]), standing, everyday, few, compared: compared.length, rows: kept };
+  return { ...base, loggedDays: days.size, enough, usual: avg([...days.values()]), standing, everyday, few, adopted, compared: compared.length, rows: kept };
 }
 
 // ---- new foods -------------------------------------------------------------------
