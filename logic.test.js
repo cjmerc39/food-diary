@@ -463,26 +463,10 @@ test('reintroduction watches tally points in the 72 hours after each exposure', 
   assert.deepEqual(L.reintroWatches(diary(), now), []);
 });
 
-test('the suspects window runs up to a week, in words past three days', () => {
-  assert.deepEqual(L.WINDOW_CHOICES, [6, 12, 24, 48, 72, 96, 120, 168]);
+test('window settings from earlier builds stay valid in a stored diary, though nothing reads them now', () => {
   assert.equal(L.normalizeState({ v: 2, settings: { windowHours: 168 } }).settings.windowHours, 168);
   assert.equal(L.normalizeState({ v: 2, settings: { windowHours: 144 } }).settings.windowHours, 24, 'off-list values still fall back');
-  assert.deepEqual([72, 96, 120, 168].map(L.windowText), ['72h', '4 days', '5 days', '7 days']);
-  assert.deepEqual([24, 96, 168].map(L.windowChip), ['24h', '4d', '7d']);
-  assert.equal(L.LONG_WINDOW, 96);
-  assert.deepEqual([4, 24, 48, 72, 96, 168].map(L.windowWords), ['4 hours', '24 hours', '48 hours', '72 hours', '4 days', '7 days']);
-  // A five-day window: an eating four days before now is too soon to tell; one six days before is counted.
-  const s = diary({
-    settings: { ...L.freshState().settings, windowHours: 120 },
-    foodLog: [food('a', '2026-09-01T08:00', ['dairy']), food('b', '2026-09-03T08:00', ['dairy']), food('c', '2026-09-06T08:00', ['dairy'])],
-    symptomLog: [sym('s1', '2026-09-04T08:00', 'crying', 2)],   // 3 days after a: inside a 5-day window, outside 48h
-  });
-  const at = (hours) => L.standingOut(s, { fromDay: '2026-09-01', today: '2026-09-10', now: '2026-09-10T00:00', settings: { ...s.settings, windowHours: hours }, who: 'parent' });
-  const [long] = at(120).rows, [short] = at(48).rows;
-  assert.equal(at(120).windowHours, 120);
-  assert.deepEqual([long.eaten, long.pending, long.followed], [2, 1, 2], 'five days: the eating four days ago is too soon to tell; both earlier ones were followed');
-  assert.deepEqual([short.eaten, short.pending, short.followed], [3, 0, 1], '48 hours: all three are counted, and only the eating a day before the symptom was followed');
-  assert.deepEqual(at(120).standing, [], 'with dairy at every meal there are no days without it to compare against');
+  assert.deepEqual(L.freshState().settings.safeTags, []);
 });
 
 // ---- two pathways: through breast milk, and the baby's own food ---------------
@@ -669,11 +653,11 @@ test('merging foods moves the library and saved meals, never past entries, and h
   assert.equal(JSON.stringify(s.foodLog), log, 'past entries are untouched');
   assert.equal(L.mergeItem(s, 'cz', 'cz'), null);
   const merged = { ...s, ...m };
-  const r = L.standingOut(merged, { fromDay: '2026-09-01', today: '2026-09-08', now: '2026-09-10T00:00', settings: s.settings, who: 'parent' });
-  assert.equal(r.foods, 1, "the old food's entries count toward the one it became, as one food");
+  const r = L.standingOut(merged, { fromDay: '2026-09-01', today: '2026-09-08', who: 'parent' });
+  assert.deepEqual(r.rows.map((x) => [x.label, x.eatenDays]), [['Coke zero', 2]], "the old food's entries count toward the one it became, as one food; its Sep 2 entry predates symptom tracking");
   const grouped = L.standingOut({ ...merged, foodLog: [...merged.foodLog, { ...named('e5', '2026-09-05T12:00', 'Water'), items: [] }] },
-    { fromDay: '2026-09-01', today: '2026-09-08', now: '2026-09-10T00:00', settings: s.settings, who: 'parent' });
-  assert.equal(grouped.foods, 2);
+    { fromDay: '2026-09-01', today: '2026-09-08', who: 'parent' });
+  assert.equal(grouped.rows.length, 2);
   const chain = L.mergeItem({ ...merged, foodItems: [...merged.foodItems, { id: 'pz', label: 'Pepsi zero', tags: [], uncertain: [], useCount: 0, lastUsed: null, reviewed: true }] }, 'cz', 'pz');
   assert.equal(L.itemResolver(chain.foodItems)('dc').id, 'pz', 'merges chain');
 });
@@ -733,68 +717,131 @@ test('restoring checks foods, saved meals, and the links between them', () => {
 
 // ---- what trends answers -----------------------------------------------------
 
-test('is it working: the two weeks before an elimination against the time since, in plain counts', () => {
-  const symptomLog = [];
-  for (let d = 1; d <= 14; d++) symptomLog.push(sym(`b${d}`, `2026-09-${String(d).padStart(2, '0')}T10:00`, 'crying', 3));   // heavy before
-  for (const d of [16, 20, 24, 28]) symptomLog.push(sym(`a${d}`, `2026-09-${d}T10:00`, 'crying', 1));                       // light since
+test('where things stand: what is out and since when, and the days with entries since symptom tracking began', () => {
   const s = diary({
-    foodLog: [food('f1', '2026-09-01T08:00')],
-    symptomLog,
+    foodLog: [food('f1', '2026-09-07T08:00'), food('f2', '2026-09-10T08:00'), food('f3', '2026-09-14T08:00'), food('f4', '2026-09-20T08:00')],
+    symptomLog: [sym('s1', '2026-09-13T10:00', 'crying', 2), sym('s2', '2026-09-16T10:00', 'skin', 1)],
     phases: [
-      { ...phase('2026-09-15T00:00'), id: 'dairy' },
-      { ...phase('2026-09-27T00:00', null, { tag: 'soy' }), id: 'soy' },
-      { ...phase('2026-08-20T00:00', '2026-09-25T00:00', { tag: 'egg' }), id: 'egg' },
+      { ...phase('2026-08-06T00:00'), id: 'dairy' },
+      { ...phase('2026-09-11T00:00', null, { tag: 'soy' }), id: 'soy' },
+      { ...phase('2026-08-20T00:00', '2026-09-01T00:00', { tag: 'egg' }), id: 'egg' },
       { ...phase('2026-10-05T00:00', null, { tag: 'corn' }), id: 'corn' },
-      { ...phase('2026-09-10T00:00', null, { kind: 'reintroduce', tag: 'wheat' }), id: 'wheat-back' },
+      { ...phase('2026-09-15T00:00', null, { kind: 'reintroduce', tag: 'wheat' }), id: 'wheat-back' },
     ],
   });
-  const out = L.eliminationOutcomes(s, '2026-09-30');
-  assert.deepEqual(out.map((o) => [o.phase.id, o.verdict]), [['soy', 'young'], ['dairy', 'compare'], ['egg', 'no-before']],
-    'eliminations only, started ones only, active first; upcoming and reintroductions stay out');
-  const dairy = out[1];
-  assert.deepEqual([dairy.before.days, dairy.before.avgLoad, dairy.before.symptomDays], [14, 3, 14]);
-  assert.deepEqual([dairy.since.days, dairy.since.symptomDays, dairy.sinceTo, dairy.ended], [16, 4, '2026-09-30', false]);
-  assert.ok(near(dairy.since.avgLoad, 4 / 16), 'quiet days count as days with none');
-  const egg = out[2];
-  assert.deepEqual([egg.before.days, egg.since.days, egg.sinceTo, egg.ended], [0, 24, '2026-09-24', true], 'a phase from before the diary has nothing before it; an ended one stops the day before its end');
-  assert.equal(out[0].since.days, 4);
-  assert.deepEqual(L.eliminationOutcomes(diary(), '2026-09-30'), []);
+  const st = L.statusNow(s, { fromDay: '2026-09-01', today: '2026-09-20' });
+  assert.deepEqual(st.out.map((p) => [p.phase.id, p.startDay, p.day]), [['dairy', '2026-08-06', 46], ['soy', '2026-09-11', 10]],
+    'active eliminations, oldest first, with the day number; ended and upcoming ones stay out');
+  assert.deepEqual(st.back.map((p) => [p.phase.id, p.day]), [['wheat-back', 6]]);
+  assert.equal(st.trackingStart, '2026-09-13', 'tracking begins with the first symptom entry, not the first food entry');
+  assert.deepEqual([st.from, st.days, st.symptomDays], ['2026-09-13', 4, 2],
+    'days with entries from the first symptom entry on: Sep 13, 14, 16, 20; the food logged on Sep 7 and 10 is not counted');
+  assert.deepEqual(L.statusNow(diary(), { fromDay: '2026-09-01', today: '2026-09-20' }), { out: [], back: [], trackingStart: null, from: '2026-09-01', days: 0, symptomDays: 0 });
 });
 
-test('standing out: a food against the days without it, both sides measured from a meal', () => {
+// A diary for the standing-out checks. Symptom tracking begins Sep 5. Oatmeal
+// every day; eggs every fourth day, each a heavy day (load 5); shrimp twice,
+// once on a very bad day (load 8) and once on a quiet one; a sesame bar once;
+// coke zero typed the old way three times; a few light days (load 1) besides.
+const day = (d) => `2026-09-${String(d).padStart(2, '0')}`;
+const item = (id, label, tags = []) => ({ id, label, tags, uncertain: [], useCount: 1, lastUsed: null, reviewed: true });
+function standoutDiary() {
   const foodLog = [], symptomLog = [];
-  const day = (d) => `2026-09-${String(d).padStart(2, '0')}`;
-  for (let d = 1; d <= 12; d++) foodLog.push({ ...named(`o${d}`, `${day(d)}T08:00`, 'Oatmeal'), items: ['oat'] });
-  for (const d of [2, 5, 8, 11]) {
-    foodLog.push({ ...named(`e${d}`, `${day(d)}T12:00`, 'Eggs'), items: ['egg'], tags: ['egg'] });
-    symptomLog.push(sym(`s${d}`, `${day(d)}T15:00`, 'crying', 2));
-  }
-  symptomLog.push(sym('s6', `${day(6)}T10:00`, 'skin', 1));
-  foodLog.push({ ...named('e12', `${day(12)}T20:00`, 'Eggs'), items: ['egg'], tags: ['egg'] });   // window still open at now
-  foodLog.push(named('c3', `${day(3)}T13:00`, 'Coke zero'), named('c9', `${day(9)}T13:00`, 'Coke zero'));   // older entries, no items
-  const s = diary({
-    foodItems: [{ id: 'oat', label: 'Oatmeal', tags: ['oat'], uncertain: [], useCount: 12, lastUsed: null, reviewed: true },
-      { id: 'egg', label: 'Eggs', tags: ['egg'], uncertain: [], useCount: 5, lastUsed: null, reviewed: true }],
-    foodLog, symptomLog,
-  });
-  const opts = { fromDay: '2026-09-01', today: '2026-09-12', now: '2026-09-13T00:00', settings: s.settings, who: 'parent' };
-  const r = L.standingOut(s, opts);
-  assert.equal(r.windowHours, 24);
-  assert.deepEqual(r.standing.map((x) => x.label), ['egg'], 'eggs stand out; oatmeal, eaten every day, has no days without it to compare');
+  for (let d = 1; d <= 20; d++) foodLog.push({ ...named(`o${d}`, `${day(d)}T08:00`, 'Oatmeal'), items: ['oat'], tags: ['oat'] });
+  for (const d of [2, 6, 10, 14, 18]) foodLog.push({ ...named(`e${d}`, `${day(d)}T12:00`, 'Eggs'), items: ['egg'], tags: ['egg'] });
+  for (const d of [6, 10, 14, 18]) symptomLog.push(sym(`c${d}`, `${day(d)}T15:00`, 'crying', 3), sym(`k${d}`, `${day(d)}T16:00`, 'skin', 2));
+  for (const d of [5, 8, 12, 16]) symptomLog.push(sym(`q${d}`, `${day(d)}T09:00`, 'crying', 1));
+  for (const d of [7, 13]) foodLog.push({ ...named(`h${d}`, `${day(d)}T19:00`, 'Shrimp'), items: ['shrimp'], tags: ['shellfish'] });
+  symptomLog.push(sym('h7a', `${day(7)}T21:00`, 'crying', 3), sym('h7b', `${day(7)}T22:00`, 'stool', 3, ['blood'], { consistency: 'watery' }));
+  foodLog.push({ ...named('z9', `${day(9)}T13:00`, 'Sesame bar'), items: ['ses'] });
+  foodLog.push(named('c2', `${day(2)}T13:00`, 'Coke zero'), named('c11', `${day(11)}T13:00`, 'Coke zero'), named('c15', `${day(15)}T13:00`, 'Coke zero'));
+  return diary({ foodItems: [item('oat', 'Oatmeal', ['oat']), item('egg', 'Eggs', ['egg']), item('shrimp', 'Shrimp', ['shellfish']), item('ses', 'Sesame bar')], foodLog, symptomLog });
+}
+const OPTS = { fromDay: '2026-09-01', today: '2026-09-20', who: 'parent' };
+
+test('standing out: days eaten against days not, by symptom load, from the first symptom entry on', () => {
+  const s = standoutDiary();
+  const r = L.standingOut(s, OPTS);
+  assert.deepEqual([r.trackingStart, r.from, r.loggedDays, r.enough], ['2026-09-05', '2026-09-05', 16, true], 'the range is clipped to when symptom tracking began');
+  assert.deepEqual(r.rows.map((x) => x.label), ['egg', 'oat', 'shellfish', 'Sesame bar', 'Coke zero'], 'tags, then foods, then older names; a tag and a food eaten on the same days are one row');
+  assert.deepEqual(r.standing.map((x) => x.label), ['egg']);
   const egg = r.standing[0];
-  assert.deepEqual([egg.kind, egg.eaten, egg.eatenDays, egg.followed, egg.pending, egg.otherDays, egg.otherFollowed], ['tag', 4, 4, 4, 1, 7, 1],
-    'the day of the eating still inside its window is an egg day, not a day without');
-  assert.deepEqual(egg.also, [{ kind: 'food', label: 'Eggs' }], 'the tag and the food are the same eatings: one row, the food named alongside');
-  assert.deepEqual(egg.dates.map((d) => [d.day, d.followed, d.pending]), [['2026-09-02', true, false], ['2026-09-05', true, false], ['2026-09-08', true, false], ['2026-09-11', true, false], ['2026-09-12', false, true]]);
-  assert.deepEqual(egg.otherDates.filter((d) => d.followed).map((d) => d.day), ['2026-09-06'], 'a day without eggs counts as followed when symptoms came within the window after its first meal');
-  assert.ok(near(egg.gap, 1 - 1 / 7));
-  assert.equal(r.foods, 3, 'Oatmeal, egg (one with Eggs), and the older Coke zero entries');
-  assert.equal(r.compared, 1, 'only eggs had enough eatings and enough days without');
-  assert.deepEqual(L.standingOut(s, { ...opts, who: 'baby' }), { who: 'baby', windowHours: 4, standing: [], compared: 0, foods: 0, rows: [] }, 'nothing eaten directly yet');
-  // A food followed about as often with as without does not stand out.
-  const even = diary({ ...s, symptomLog: [...symptomLog, ...[1, 3, 4, 7, 9, 10].map((d) => sym(`x${d}`, `${day(d)}T09:00`, 'crying', 1))] });
-  assert.deepEqual(L.standingOut(even, opts).standing, [], 'symptoms on most days without eggs too: nothing separates');
-  assert.equal(L.standingOut(diary(), opts).compared, 0, 'an empty diary has nothing to compare');
+  assert.deepEqual(egg.dates.map((d) => [d.day, d.load]), [['2026-09-06', 5], ['2026-09-10', 5], ['2026-09-14', 5], ['2026-09-18', 5]],
+    'the eggs eaten on Sep 2, before any symptom was logged, are not a day eaten');
+  assert.deepEqual([egg.kind, egg.eatenDays, egg.notDays, egg.avgEaten, egg.avgNot, egg.gap, egg.heavier], ['tag', 4, 12, 5, 1, 4, 4]);
+  assert.deepEqual(egg.also, [{ kind: 'food', label: 'Eggs', id: 'egg' }]);
+  const shrimp = r.rows.find((x) => x.label === 'shellfish');
+  assert.ok(shrimp.gap >= L.STANDOUT_GAP && shrimp.heavier === 1 && !r.standing.includes(shrimp), 'one very bad day and one quiet day: the average is high, but one rough day cannot carry a food');
+  assert.equal(r.compared, 3, 'eggs, shrimp, and coke zero had 2 days eaten and 5 without; the sesame bar was eaten once');
+  assert.ok(r.rows.find((x) => x.label === 'Coke zero').gap < 0, 'older entries fold in by name, and quiet days with it sit below the rest');
+  // Eaten most days: nothing to compare against, said as such and never ranked.
+  assert.deepEqual(r.everyday.map((x) => [x.label, x.eatenDays, x.notDays, x.also]), [['oat', 16, 0, [{ kind: 'food', label: 'Oatmeal', id: 'oat' }]]]);
+  // The range chips narrow both sides.
+  const recent = L.standingOut(s, { ...OPTS, fromDay: '2026-09-10' });
+  assert.deepEqual([recent.from, recent.loggedDays, recent.standing[0].eatenDays, recent.standing[0].notDays], ['2026-09-10', 11, 3, 8]);
+  // Symptoms on most days regardless: nothing separates, and that is the answer.
+  const heavy = [];
+  for (let d = 5; d <= 20; d++) heavy.push(sym(`x${d}`, `${day(d)}T11:00`, 'crying', 2), sym(`y${d}`, `${day(d)}T11:30`, 'skin', 2));
+  const even = L.standingOut({ ...s, symptomLog: [...s.symptomLog, ...heavy] }, OPTS);
+  assert.deepEqual([even.standing, even.compared], [[], 3], 'eggs still average 5 a day, but so do the days without them');
+  assert.deepEqual(L.standingOut(s, { ...OPTS, who: 'baby' }).rows, [], 'nothing eaten directly yet');
+});
+
+test('standing out: too few days is the normal answer, not a reason to loosen anything', () => {
+  const sparse = diary({
+    foodItems: [item('t', 'Toast')],
+    foodLog: [1, 2, 3, 4, 5].map((d) => ({ ...named(`f${d}`, `${day(d)}T08:00`, 'Toast'), items: ['t'] })),
+    symptomLog: [sym('s1', `${day(1)}T10:00`, 'crying', 1)],
+  });
+  const e = L.standingOut(sparse, { fromDay: '2026-08-20', today: day(5), who: 'parent' });
+  assert.deepEqual([e.enough, e.loggedDays, e.standing, e.everyday, e.compared, e.rows.length], [false, 5, [], [], 0, 1],
+    'five days with entries: not enough for 2 eaten and 5 without, and toast is not called an everyday food either');
+  assert.equal(L.STANDOUT_MIN_EATEN + L.STANDOUT_MIN_NOT, 7);
+  const none = L.standingOut(diary({ foodLog: [food('f1', '2026-09-02T08:00', ['dairy'])] }), OPTS);
+  assert.deepEqual([none.trackingStart, none.loggedDays, none.standing, none.rows], [null, 0, [], []], 'food but no symptom yet: tracking has not begun');
+  assert.deepEqual(L.standingOut(diary(), OPTS).rows, []);
+});
+
+test('safe foods and tags are hers alone: left out of the comparison, kept by restore and merge, never set by the app', () => {
+  const s = standoutDiary();
+  const safeFood = { ...s, foodItems: s.foodItems.map((it) => (it.id === 'egg' ? { ...it, safe: true } : it)) };
+  const r1 = L.standingOut(safeFood, OPTS);
+  assert.deepEqual(r1.standing.map((x) => [x.label, x.also]), [['egg', []]], 'the food is out; the egg tag is its own thing until it is marked too');
+  const safeBoth = { ...safeFood, settings: { ...s.settings, safeTags: ['egg'] } };
+  const r2 = L.standingOut(safeBoth, OPTS);
+  assert.deepEqual([r2.standing, r2.rows.map((x) => x.label), r2.compared], [[], ['oat', 'shellfish', 'Sesame bar', 'Coke zero'], 2]);
+  assert.deepEqual(L.newFoods({ ...s, foodItems: s.foodItems.map((it) => (it.id === 'ses' ? { ...it, safe: true } : it)) }, OPTS).map((n) => n.label), ['Shrimp'], 'safe foods are left out of new foods too');
+  // Restore keeps a true flag and drops anything else; merge unions the tags.
+  const file = {
+    ...L.freshState(), v: 2, onboarded: true, settings: { ...L.freshState().settings, safeTags: ['egg', '<b>'] },
+    foodItems: [{ ...item('a', 'Apple'), safe: true }, { ...item('b', 'Bread'), safe: 'yes' }],
+  };
+  const back = L.readBackup(JSON.stringify(file)).state;
+  assert.deepEqual(back.foodItems.map((it) => [it.id, it.safe]), [['a', true], ['b', undefined]]);
+  assert.deepEqual(back.settings.safeTags, ['egg']);
+  assert.deepEqual(L.normalizeState({ v: 2 }).settings.safeTags, []);
+  const merged = L.mergeStates(diary({ settings: { ...L.freshState().settings, safeTags: ['egg'] } }), diary({ settings: { ...L.freshState().settings, safeTags: ['soy', 'egg'] } })).state;
+  assert.deepEqual(merged.settings.safeTags, ['egg', 'soy']);
+  const updated = L.readBackup(JSON.stringify({ ...L.freshState(), v: 1, onboarded: true, meals: [{ id: 'm', name: 'Toast, jam', tags: [], uncertain: [], useCount: 1, lastUsed: null }] })).state;
+  assert.ok(updated.foodItems.length === 2 && updated.foodItems.every((it) => !('safe' in it)) && updated.settings.safeTags.length === 0, 'the update never marks anything safe');
+});
+
+test('new foods: first eaten in range, from the first symptom entry on, with that day and the next against the other days', () => {
+  const s = standoutDiary();
+  const list = L.newFoods(s, OPTS);
+  assert.deepEqual(list.map((n) => [n.label, n.kind, n.day, n.load, n.next.day, n.next.load, n.next.pending, n.otherDays]),
+    [['Sesame bar', 'food', '2026-09-09', 0, '2026-09-10', 5, false, 14], ['Shrimp', 'food', '2026-09-07', 8, '2026-09-08', 1, false, 14]],
+    'newest first; eggs, oatmeal, and coke zero were first eaten before tracking began, and tags are not foods here');
+  assert.ok(near(list[0].others, 27 / 14) && near(list[1].others, 23 / 14), 'the other days leave out the two being described');
+  const late = L.newFoods({ ...s, foodItems: [...s.foodItems, item('pear', 'Pear'), item('plum', 'Plum')],
+    foodLog: [...s.foodLog, { ...named('p19', `${day(19)}T12:00`, 'Pear'), items: ['pear'] }, { ...named('p20', `${day(20)}T12:00`, 'Plum'), items: ['plum'] }] }, OPTS);
+  assert.deepEqual(late.slice(0, 2).map((n) => [n.label, n.next.pending, n.next.load]), [['Plum', true, null], ['Pear', true, 0]], 'a next day that is today or later is not over yet');
+  const gap = L.newFoods(diary({ foodItems: [item('pear', 'Pear')],
+    foodLog: [{ ...named('p5', `${day(5)}T12:00`, 'Pear'), items: ['pear'] }, { ...named('p7', `${day(7)}T12:00`, 'Pear'), items: ['pear'] }],
+    symptomLog: [sym('s5', `${day(5)}T15:00`, 'crying', 2), sym('s7', `${day(7)}T15:00`, 'crying', 1)] }), OPTS);
+  assert.deepEqual(gap.map((n) => [n.label, n.load, n.next.load, n.next.pending, n.otherDays]), [['Pear', 2, null, false, 1]], 'nothing logged the next day is said, not counted as quiet');
+  assert.deepEqual(L.newFoods(s, { ...OPTS, who: 'baby' }), []);
+  assert.deepEqual(L.newFoods(diary(), OPTS), []);
 });
 
 // ---- DST-adjacent days -------------------------------------------------------
@@ -812,14 +859,10 @@ test('DST: days bucket by local date and series never skip or repeat a day', () 
   assert.deepEqual([...L.bucketByDay(log).keys()], ['2026-03-08', '2026-11-01']);
 });
 
-test('DST: a 24h window after an exposure is 24 real hours across spring forward', () => {
+test('DST: a 24h span after a time is 24 real hours across spring forward (the reintroduction watch counts this way)', () => {
   const log = [sym('in', '2026-03-08T12:30', 'crying', 2), sym('edge', '2026-03-08T13:00', 'crying', 1), sym('out', '2026-03-08T13:30', 'crying', 4)];
   const from = L.tsMs('2026-03-07T12:00');
   assert.deepEqual(L.symptomIndex(log).between(from, from + 24 * 3600000), { points: 3, count: 2 });
-  const followed = (symptomLog) => L.standingOut(diary({ foodLog: [food('d1', '2026-03-07T12:00', ['dairy'])], symptomLog }),
-    { fromDay: '2026-03-01', today: '2026-03-20', now: '2026-03-20T00:00', settings: L.freshState().settings, who: 'parent' }).rows[0].dates[0].followed;
-  assert.equal(followed([log[1]]), true, '13:00 the next day is exactly 24 real hours on, inside');
-  assert.equal(followed([log[2]]), false, '13:30 is past 24 real hours, though the clock has moved 25.5');
 });
 
 // ---- trends and report -------------------------------------------------------
@@ -911,6 +954,7 @@ test('mergeStates adds what is missing and keeps the current copy on a clash', (
   assert.equal(s.settings.windowHours, 48);
   assert.deepEqual(s.settings.customTags, [{ id: 'sesame', label: 'Sesame' }, { id: 'oats', label: 'Oats' }]);
   assert.deepEqual(s.settings.hiddenTags, ['corn', 'fish']);
+  assert.deepEqual(s.settings.safeTags, [], 'diaries from before safe existed merge cleanly');
   assert.deepEqual(s.dismissed, ['f1:wheat', 'f2:soy']);
   assert.equal(s.babyName, 'Rowan', 'fills a missing name');
   assert.equal(s.lastBackup, '2026-09-10T10:00');

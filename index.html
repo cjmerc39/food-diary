@@ -441,8 +441,8 @@ svg{display:block;flex:none}
    One series (daily load) in ink with a light wash; phases behind it as washes
    in fixed palette slots; hairline grid; text always in text colors. */
 .filters{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 12px}
-.filters .chip,.winpick .chip{min-height:44px;padding:0 16px;font-size:16px}
-.filters .chip[aria-pressed="true"],.winpick .chip[aria-pressed="true"]{background:var(--primary);border-color:var(--primary);color:var(--primary-on)}
+.filters .chip{min-height:44px;padding:0 16px;font-size:16px}
+.filters .chip[aria-pressed="true"]{background:var(--primary);border-color:var(--primary);color:var(--primary-on)}
 .chart-card{position:relative;margin-bottom:12px;padding:16px 14px 14px}
 .chart-title{font:600 19px/1.3 var(--round)}
 .chart-card > .fine{margin:2px 0 10px}
@@ -474,9 +474,6 @@ svg{display:block;flex:none}
 .strip{display:block;width:100%;height:auto}
 .strip .grid{stroke:var(--line);stroke-width:1}
 .strip .bar{fill:var(--sym)}
-.winpick{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:10px 0 4px}
-.winpick .chip{padding:0}
-.win-note{margin:8px 2px 0;color:var(--ink2);font-size:14px}
 /* The three answers: sentences in plain counts, one block per pathway, the
    dates behind a food a tap away. */
 .answer{margin-bottom:12px}
@@ -492,7 +489,21 @@ details.standout > summary::after{content:"Show the dates";display:block;margin-
 details[open].standout > summary::after{content:"Hide the dates"}
 .dates{margin-top:8px;color:var(--ink2);font-size:15px;line-height:1.45}
 .dates p + p{margin-top:4px}
-.standout-none{margin-top:6px}
+.dates .chip{min-height:44px;margin-top:10px;padding:0 16px;font-size:15px}
+.standout-none,.everyday,.newfood-none{margin-top:6px}
+.everyday{color:var(--ink2);font-size:15px;line-height:1.45}
+.everyday b{color:var(--ink)}
+details.safe-line{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+details.safe-line > summary{list-style:none;cursor:pointer;min-height:44px;display:flex;align-items:center;color:var(--ink2);font-size:15px}
+details.safe-line > summary::-webkit-details-marker{display:none}
+details.safe-line > summary::after{content:"Show";margin-left:auto;color:var(--sym-ink);font-weight:600;font-size:14px}
+details.safe-line[open] > summary::after{content:"Hide"}
+.safe-list{margin-top:6px;gap:6px}
+.safe-list li{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:48px}
+.safe-list .chip{min-height:44px;padding:0 16px;font-size:15px}
+.newfoods{list-style:none;display:grid;gap:10px;margin-top:8px}
+.newfoods li{padding-left:14px;border-left:3px solid var(--food);line-height:1.45}
+.newfoods + .hint{margin-top:8px}
 .more-card{margin-bottom:12px}
 details.more-card > summary{min-height:44px;display:flex;align-items:center;font-weight:600;cursor:pointer;list-style:none}
 details.more-card > summary::-webkit-details-marker{display:none}
@@ -542,7 +553,8 @@ details[open].more-card > summary::after{transform:translateY(2px) rotate(-135de
 .report th{padding:6px 12px 6px 0;border-bottom:1px solid var(--ink3);color:var(--ink2);font-weight:600;text-align:left;white-space:nowrap}
 .report td{padding:6px 12px 6px 0;border-bottom:1px solid var(--line);vertical-align:top}
 .report .nowrap{white-space:nowrap}
-.report .answers{margin-top:10px;font-size:15px}
+.report .answers,.report .newfoods{margin-top:10px;font-size:15px}
+.report .newfoods li{border-left-color:#bbb}
 .report .standout-row{margin-top:10px}
 .report-foot{margin-top:28px;padding-top:12px;border-top:1px solid var(--line);color:var(--ink2);font-size:14px}
 .print-hint{margin-top:8px;text-align:center}
@@ -679,13 +691,13 @@ import {
   allTags, tagLabel, tagState, cycleTag, sortPhases, isPhaseActive, phaseDay, phasesToClose,
   rankMeals, searchMeals, findMealByName, autoMealName,
   hasItems, itemResolver, resolveItems, itemTags, mealTags, findItemByLabel, pickableItems, mergeItem,
-  eliminationOutcomes, standingOut, windowWords, STANDOUT_MIN_EATEN, STANDOUT_MIN_OTHER,
+  statusNow, standingOut, newFoods, trackingStart, STANDOUT_GAP,
   foodsToReview, foodReviewCard,
   symptomMissing, symptomFields, dayEntries, exposureBanners, pruneDismissed, reintroWatches,
-  standaloneHeight, WINDOW_CHOICES, TREND_RANGES, daysBetween, slugify,
+  standaloneHeight, TREND_RANGES, daysBetween, slugify,
   trendDays, trendSeries, phaseBands, phaseTagSlots, rangeEntries,
   addCustomTag, tagInUse, mergeStates, readBackup, APP_ID, backupReminder, dayGlance, dayRest, welcomeVariant, setItem,
-  eventWho, hasBabyFood, WHO, DIRECT_WINDOW_CHOICES, windowText, windowChip, LONG_WINDOW,
+  eventWho, hasBabyFood, WHO,
   DAY_CATS, STOOL_COLORS, CAUTION_COLORS, MAX_STOOL_COUNT, stoolCount,
 } from './logic.js';
 
@@ -695,7 +707,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 20;
+const BUILD = 21;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -1392,116 +1404,171 @@ function dailyListHtml(series) {
 }
 
 // ---- what trends answers ---------------------------------------------------------------
-// Three answers in plain counts, in this order: is the elimination working; is
-// any food standing out; what to raise at the next visit. No scores anywhere:
-// every number can be checked against her own timeline, and the dates behind
-// each food are a tap away. The report carries the same sentences.
+// Four sections in plain counts, in this order: where things stand; is any food
+// standing out; which foods were new; what to raise at the next visit. Every
+// number is one she could check by scrolling her own timeline: days, dates, and
+// each day's load. No scores, no before-and-after, and nothing counted from
+// before symptom tracking began. The report carries the same sentences.
 const PATHWAY_WORDS = { parent: () => 'What you ate', baby: () => `What ${babyLabel()} ate` };
-const PATHWAY_NOTE = {
-  parent: () => `Through breast milk. Symptoms within ${windowWords(S.settings.windowHours)} of a meal count as following it.`,
-  baby: () => `Eaten directly. Symptoms within ${windowWords(S.settings.directWindowHours)} count as following.`,
-};
+const PATHWAY_NOTE = { parent: () => 'Through breast milk.', baby: () => `Eaten by ${babyLabel()} directly.` };
 const oneDp = (n) => String(Math.round(n * 10) / 10);
 const dayWord = (n) => plural(n, 'day');
 const standLabel = (x) => (x.kind === 'tag' ? tagLabel(S.settings, x.label) : x.label);
 const rangeWords = (range) => (range === 'all' ? 'everything logged' : `the last ${RANGE_NAMES[range]}`);
+const safeFoods = () => liveFoods().filter((it) => it.safe).sort(byLabel);
+const safeTags = () => (S.settings.safeTags || []).map((t) => ({ id: t, label: tagLabel(S.settings, t) })).sort(byLabel);
+const CAUSE_NOTE = 'Heavier days with a food are not the same as the food causing them.';
+const STANDOUT_RULE = `A food is listed only when every day it was eaten was heavier than the days without it, by ${STANDOUT_GAP} points or more on average.`;
 
-// Is it working: one sentence per elimination, with the counts on both sides.
-function outcomeText(o) {
-  const food = tagLabel(S.settings, o.phase.tag);
-  const started = fmtDate(o.phase.start);
-  if (o.verdict === 'young') return `${food} came out on ${started}: only ${dayWord(o.since.days)} logged since, too soon to compare.`;
-  if (o.verdict === 'no-before') {
-    return o.before.days
-      ? `${food} came out on ${started}, with only ${dayWord(o.before.days)} logged before it: too little to compare against.`
-      : `${food} came out on ${started}, before the diary began, so there is nothing to compare against.`;
-  }
-  const b = o.before, a = o.since;
-  return `${food} came out on ${started}: in the ${dayWord(b.days)} before, symptom load averaged ${oneDp(b.avgLoad)} a day and symptoms came on ${b.symptomDays} of ${b.days} days; `
-    + `in the ${dayWord(a.days)} ${o.ended ? 'it was out' : 'since'}, ${oneDp(a.avgLoad)} a day and ${a.symptomDays} of ${a.days} days.`;
-}
-const workingList = (outcomes) => `<ul class="answers">${outcomes.map((o) => `<li data-verdict="${o.verdict}">${esc(outcomeText(o))}</li>`).join('')}</ul>`;
-
-// Anything standing out: a sentence per food, the dates behind it a tap away.
-function standoutText(r) {
-  return `${standLabel(r)}: eaten ${plural(r.eaten, 'time')} on ${dayWord(r.eatenDays)}, and symptoms followed within ${windowWords(r.windowHours)} after ${r.followed} of them. `
-    + `On the ${dayWord(r.otherDays)} without it, symptoms followed on ${r.otherFollowed}.`;
-}
-const markDay = (d) => `${dayShort(d.day)}${d.followed ? ' ✓' : ''}${d.possible ? ' (possibly)' : ''}${d.pending ? ' (too soon to tell)' : ''}`;
-function standoutDatesText(r) {
-  return [
-    `Eaten: ${r.dates.map(markDay).join(', ')}.`,
-    `Days without it: ${r.otherDates.length ? r.otherDates.map(markDay).join(', ') : 'none'}.`,
-    `✓ means symptoms followed within ${windowWords(r.windowHours)}.${r.dates.some((d) => d.possible) ? ' "Possibly" marks a meal where it may have been hidden.' : ''}`
-    + (r.also.length ? ` Also counted as ${r.also.map(standLabel).join(', ')}.` : ''),
+// Where things stand: what is out and since when, then the range in her own terms.
+function statusLines(st, range) {
+  const lines = [
+    ...st.out.map((p) => `${tagLabel(S.settings, p.tag)} has been out since ${fmtDate(p.phase.start)} (day ${p.day}).`),
+    ...st.back.map((p) => `${tagLabel(S.settings, p.tag)} has been back since ${fmtDate(p.phase.start)} (day ${p.day}).`),
   ];
+  if (!lines.length) lines.push('Nothing is out right now.');
+  if (!st.trackingStart) lines.push('No symptoms logged yet.');
+  else {
+    const since = st.trackingStart > range.fromDay ? `Since symptom tracking began on ${dayShort(st.trackingStart)}`
+      : range.preset === 'all' ? 'Since the diary began' : range.preset ? `Over the last ${RANGE_NAMES[range.preset]}` : 'Over this range';
+    lines.push(`${since}, ${st.days === 1 ? '1 day has' : `${st.days} days have`} entries. Symptoms were logged on ${st.symptomDays} of them.`);
+  }
+  return lines;
+}
+const statusList = (lines) => `<ul class="answers">${lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>`;
+
+// Anything standing out: a sentence per food, its days a tap away.
+function standoutText(r) {
+  return `${standLabel(r)}: eaten on ${dayWord(r.eatenDays)}. Symptom load on those days averaged ${oneDp(r.avgEaten)}. On the ${dayWord(r.notDays)} without it, ${oneDp(r.avgNot)}.`;
+}
+const dayAndLoad = (d) => `${dayShort(d.day)} (load ${d.load}${d.possible ? ', possibly hidden' : ''})`;
+function standoutDatesText(r) {
+  return [`Days eaten: ${r.dates.map(dayAndLoad).join(', ')}.`, ...(r.also.length ? [`Also counted as ${r.also.map(standLabel).join(', ')}.`] : [])];
 }
 function standoutEmpty(r, rangeName) {
-  return r.compared
-    ? `No food stands out over ${rangeName}: symptoms followed about as often with each food as without it.`
-    : `Not enough logged yet to compare foods over ${rangeName}. A food needs ${STANDOUT_MIN_EATEN} days eaten and ${STANDOUT_MIN_OTHER} days without it.`;
+  if (!r.enough) return `Not enough days logged yet to compare foods over ${rangeName}.`;
+  if (!r.compared) return `No food could be compared over ${rangeName}. Each was eaten most days, or on only one.`;
+  return `No food stands out over ${rangeName}. No food's days were clearly heavier than the days without it.`;
 }
+const everydayText = (r) => `Eaten too often to compare against anything: ${r.everyday.map(standLabel).join(', ')}.`;
 function standoutHtml(r, rangeName) {
-  if (!r.standing.length) return `<p class="hint standout-none">${esc(standoutEmpty(r, rangeName))}</p>`;
-  return r.standing.map((row) => `<details class="standout" data-key="${esc(row.key)}"><summary>${esc(standoutText(row))}</summary>
-    <div class="dates">${standoutDatesText(row).map((t) => `<p>${esc(t)}</p>`).join('')}</div></details>`).join('');
+  const rows = r.standing.length ? r.standing.map((row) => `<details class="standout" data-key="${esc(row.key)}"><summary>${esc(standoutText(row))}</summary>
+    <div class="dates">${standoutDatesText(row).map((t) => `<p>${esc(t)}</p>`).join('')}${row.kind === 'name' ? ''
+      : `<button class="chip" data-act="mark-safe" data-keys="${esc(safeKeys(row).join(' '))}">Mark ${esc(standLabel(row))} safe</button>`}</div></details>`).join('')
+    : `<p class="hint standout-none">${esc(standoutEmpty(r, rangeName))}</p>`;
+  return rows + (r.everyday.length ? `<p class="everyday">${esc(everydayText(r))}</p>` : '');
+}
+function safeLineHtml() {
+  const list = [...safeTags().map((t) => ({ kind: 'tag', id: t.id, label: t.label })), ...safeFoods().map((it) => ({ kind: 'food', id: it.id, label: it.label }))];
+  if (!list.length) return '';
+  return `<details class="safe-line"><summary>${list.length === 1 ? '1 food' : `${list.length} foods`} marked safe</summary>
+    <p class="fine">Left out of this comparison until you say otherwise.</p>
+    <ul class="plain safe-list">${list.map((x) => `<li><span>${esc(x.label)}</span><button class="chip" data-act="unmark-safe" data-kind="${x.kind}" data-id="${esc(x.id)}">Not safe</button></li>`).join('')}</ul></details>`;
 }
 
-// For the next visit: the same findings as lines to read aloud.
-function visitLines(outcomes, stands, rangeName) {
-  const lines = outcomes.map((o) => {
-    const food = tagLabel(S.settings, o.phase.tag);
-    if (o.verdict === 'young') return `${food}: only ${dayWord(o.since.days)} logged since it came out; too soon to compare.`;
-    if (o.verdict === 'no-before') return `${food} was already out when the diary began; nothing to compare against.`;
-    const b = o.before, a = o.since;
-    return `${o.ended ? `While ${food.toLowerCase()} was out` : `Since ${food.toLowerCase()} came out`} (${fmtDate(o.phase.start)}), symptom load averaged ${oneDp(a.avgLoad)} a day instead of ${oneDp(b.avgLoad)}, `
-      + `with symptoms on ${a.symptomDays} of ${a.days} days instead of ${b.symptomDays} of ${b.days}.`;
-  });
+// New foods: one occasion each, described and never ranked.
+const NEW_SHOWN = 6;
+function newFoodText(n, rangeName) {
+  const then = n.next.pending ? `Symptom load was ${n.load} that day. The next day is not over yet.`
+    : n.next.load === null ? `Symptom load was ${n.load} that day. Nothing was logged the next day.`
+      : `Symptom load was ${n.load} that day and ${n.next.load} the next.`;
+  return `${n.label}: first eaten on ${dayShort(n.day)}. ${then}${n.otherDays ? ` Other days over ${rangeName} averaged ${oneDp(n.others)}.` : ''}`;
+}
+function newFoodsHtml(list, rangeName) {
+  if (!trackingStart(S)) return '<p class="hint newfood-none">No symptoms logged yet.</p>';
+  if (!list.length) return `<p class="hint newfood-none">No food was eaten for the first time over ${esc(rangeName)}.</p>`;
+  const shown = list.slice(0, NEW_SHOWN);
+  return `<ul class="newfoods">${shown.map((n) => `<li data-key="${esc(n.key)}">${esc(newFoodText(n, rangeName))}</li>`).join('')}</ul>`
+    + (list.length > shown.length ? `<p class="hint">${plural(list.length - shown.length, 'more food')} ${list.length - shown.length === 1 ? 'was' : 'were'} first eaten earlier over ${esc(rangeName)}.</p>` : '');
+}
+
+// For the next visit: where things stand and what stood out, as lines to read aloud.
+function visitLines(st, stands, range, rangeName) {
+  const lines = statusLines(st, range);
   const found = stands.flatMap((r) => r.standing.map((row) =>
-    `${standLabel(row)}${r.who === 'baby' ? ` (${babyLabel()}'s own food)` : ''}: symptoms followed ${row.followed} of ${row.eaten} times eaten, against ${row.otherFollowed} of ${row.otherDays} days without`));
-  lines.push(found.length ? `Standing out over ${rangeName}: ${found.join('; ')}.` : `No single food stood out over ${rangeName}.`);
+    `${standLabel(row)}${r.who === 'baby' ? ` (${babyLabel()}'s own food)` : ''}: days eaten averaged ${oneDp(row.avgEaten)}, days without ${oneDp(row.avgNot)}`));
+  lines.push(found.length ? `Standing out over ${rangeName}: ${found.join('; ')}.` : standoutEmpty(stands[0], rangeName));
   return lines;
 }
 
 function answersData(fromDay, toDay = todayKey()) {
-  const now = nowTs();
   const pathways = ['parent', ...(hasBabyFood(S) ? ['baby'] : [])];
   return {
-    outcomes: eliminationOutcomes(S, todayKey()),
-    stands: pathways.map((who) => standingOut(S, { fromDay, today: toDay, now, settings: S.settings, who })),
+    status: statusNow(S, { fromDay, today: toDay }),
+    stands: pathways.map((who) => standingOut(S, { fromDay, today: toDay, who })),
+    fresh: pathways.map((who) => ({ who, list: newFoods(S, { fromDay, today: toDay, who }) })),
   };
 }
 
 function answersHtml(fromDay) {
-  const { outcomes, stands } = answersData(fromDay);
+  const { status, stands, fresh } = answersData(fromDay);
+  const range = { preset: U.trendRange, fromDay };
   const rangeName = rangeWords(U.trendRange);
   const solids = stands.length > 1;
+  const pathway = (r, body) => `<div class="pathway" data-who="${r.who}">
+        ${solids ? `<h3 class="pathway-title">${esc(PATHWAY_WORDS[r.who]())}</h3><p class="fine">${esc(PATHWAY_NOTE[r.who]())}</p>` : ''}${body}</div>`;
   return `
-    <section class="card answer" data-answer="working">
-      <h2 class="chart-title">Is it working</h2>
-      <p class="fine">Each elimination: the two weeks before it started, against the time since. A quiet day counts as a day with no symptoms.</p>
-      ${outcomes.length ? workingList(outcomes) : '<p class="hint">No elimination yet. Start one in Phases, and this compares the two weeks before it with the time since.</p>'}
+    <section class="card answer" data-answer="status">
+      <h2 class="chart-title">Where things stand</h2>
+      ${statusList(statusLines(status, range))}
     </section>
     <section class="card answer" data-answer="standing">
       <h2 class="chart-title">Anything standing out</h2>
-      <p class="fine">Foods that were followed by symptoms more often than the days without them, over ${esc(rangeName)}. Tap one for the dates behind the counts. Being followed by symptoms is not the same as causing them.</p>
-      ${stands.map((r) => `<div class="pathway" data-who="${r.who}">
-        ${solids ? `<h3 class="pathway-title">${esc(PATHWAY_WORDS[r.who]())}</h3>` : ''}<p class="fine">${esc(PATHWAY_NOTE[r.who]())}</p>
-        ${standoutHtml(r, rangeName)}</div>`).join('')}
+      <p class="fine">Each food's days against the days without it, over ${esc(rangeName)}: the symptom load of a day it was eaten, on average, and of a day it was not. ${STANDOUT_RULE} Tap a food for its days. ${CAUSE_NOTE}</p>
+      ${stands.map((r) => pathway(r, standoutHtml(r, rangeName))).join('')}
+      ${safeLineHtml()}
+    </section>
+    <section class="card answer" data-answer="new">
+      <h2 class="chart-title">New foods</h2>
+      <p class="fine">Foods eaten for the first time over ${esc(rangeName)}, and how that day and the next went. One occasion each, so nothing is ranked here.</p>
+      ${fresh.map((r) => pathway(r, newFoodsHtml(r.list, rangeName))).join('')}
     </section>
     <section class="card answer" data-answer="visit">
       <h2 class="chart-title">For the next visit</h2>
-      <ul class="answers visit">${visitLines(outcomes, stands, rangeName).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
+      <ul class="answers visit">${visitLines(status, stands, range, rangeName).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
       <p class="fine">The report under More carries the same lines.</p>
     </section>`;
 }
 
-// The window pickers live in More; the sentences above say which window is in use.
-function windowChipsHtml(hours, who = 'parent') {
-  const choices = who === 'baby' ? DIRECT_WINDOW_CHOICES : WINDOW_CHOICES;
-  return `<div class="winpick" role="group" aria-label="${who === 'baby' ? `Time after ${esc(babyLabel())} eats` : 'Time after eating'}">${choices.map((h) =>
-    `<button class="chip" data-act="${who === 'baby' ? 'direct-window' : 'window'}" data-hours="${h}" aria-pressed="${hours === h}" aria-label="${esc(windowText(h))}">${windowChip(h)}</button>`).join('')}</div>${
-    hours >= LONG_WINDOW ? `<p class="win-note">A window this long overlaps a lot: a food eaten most days is followed by nearly every symptom, so little will stand out. Good for slow reactions, weak at telling foods apart.</p>` : ''}`;
+// Marking safe is hers alone: from a standing-out row or a food's sheet in
+// More, never suggested, and undone from the "marked safe" line or the sheet.
+// A row that is a tag and a food eaten on the same days marks both, so the
+// food doesn't resurface as its own row.
+const safeKeys = (row) => [row.key, ...row.also.filter((a) => a.kind !== 'name').map((a) => (a.kind === 'tag' ? `tag:${a.label}` : `food:${a.id}`))];
+function markSafe(keys) {
+  const labels = [];
+  for (const key of String(keys || '').split(' ').filter(Boolean)) {
+    const at = key.indexOf(':');
+    const kind = key.slice(0, at), id = key.slice(at + 1);
+    if (kind === 'food') {
+      const it = S.foodItems.find((x) => x.id === id && !x.mergedInto);
+      if (!it) continue;
+      it.safe = true;
+      labels.push(it.label);
+    } else if (kind === 'tag') {
+      S.settings.safeTags = [...new Set([...(S.settings.safeTags || []), id])];
+      labels.push(tagLabel(S.settings, id));
+    }
+  }
+  if (!labels.length) return;
+  save();
+  render();
+  toast(`${labels.join(' and ')} marked safe. Undo under "marked safe" in that card.`, { icon: 'check' });
+}
+function unmarkSafe(kind, id) {
+  let label;
+  if (kind === 'food') {
+    const it = S.foodItems.find((x) => x.id === id);
+    if (!it) return;
+    delete it.safe;
+    label = it.label;
+  } else {
+    S.settings.safeTags = (S.settings.safeTags || []).filter((t) => t !== id);
+    label = tagLabel(S.settings, id);
+  }
+  save();
+  render();
+  toast(`${label} is back in the comparison.`);
 }
 
 // ---- charts ------------------------------------------------------------------------------
@@ -1779,7 +1846,7 @@ function viewMore() {
       <p class="fine">Build ${BUILD} · ${isStandalone() ? 'Home Screen app' : 'running in the browser'}</p>
     </section>
     <h3 class="section-label">For the doctor</h3>
-    <div class="card rows">${row('open-report', 'Report for your pediatrician', 'Phases, the chart, the three answers from Trends, and the full log, ready to print or save as a PDF')}</div>
+    <div class="card rows">${row('open-report', 'Report for your pediatrician', 'Phases, the chart, the same answers as Trends, and the full log, ready to print or save as a PDF')}</div>
     <h3 class="section-label">Backups</h3>
     <div class="card rows">
       ${row('export', 'Back up now', backupStatus())}
@@ -1790,14 +1857,6 @@ function viewMore() {
       ${row('edit-name', "Baby's name", S.babyName.trim() || 'Not set')}
       ${row('edit-foods', 'Foods', foodsStatus())}
       ${row('edit-tags', 'Allergen tags', `${tags.length - hidden} shown${hidden ? `, ${hidden} hidden` : ''}`)}
-      <div class="row row-block">
-        <span class="row-main">Symptoms window<span class="row-sub">How long after you eat a food a symptom still counts as following it, in Trends and the report. Through breast milk, most reactions show within a day or two; some, skin especially, take longer.</span></span>
-        ${windowChipsHtml(S.settings.windowHours)}
-      </div>
-      <div class="row row-block">
-        <span class="row-main">${esc(babyLabel())}'s own food<span class="row-sub">The same, for food ${esc(babyLabel())} eats directly. Reactions to that come faster, typically within 1 to 4 hours.</span></span>
-        ${windowChipsHtml(S.settings.directWindowHours, 'baby')}
-      </div>
       <div class="row row-block">
         <span class="row-main">Appearance<span class="row-sub">System follows your phone's Light or Dark setting</span></span>
         <div class="seg three" role="group" aria-label="Appearance">${THEMES.map(([id, label]) =>
@@ -1911,7 +1970,8 @@ function reportHtml() {
   const name = S.babyName.trim();
   const series = trendSeries(S, from, to);
   const bands = phaseBands(S.phases, from, to);
-  const { outcomes, stands } = answersData(from, to);
+  const { status, stands, fresh } = answersData(from, to);
+  const range = { preset: U.report.preset, fromDay: from };
   // Named like Trends names it when the range is one of its presets, so the two read the same.
   const rangeName = U.report.preset ? rangeWords(U.report.preset) : 'this range';
   const entries = rangeEntries(S, from, to);
@@ -1947,20 +2007,25 @@ function reportHtml() {
       ${bandLegendHtml(bands)}
     </section>
     <section class="keep">
-      <h2>Is it working</h2>
-      <p class="report-meta">Each elimination: the two weeks before it started, against the time since. A quiet day counts as a day with no symptoms.</p>
-      ${outcomes.length ? workingList(outcomes) : '<p class="report-meta">No elimination recorded.</p>'}
+      <h2>Where things stand</h2>
+      ${statusList(statusLines(status, range))}
     </section>
     <section class="keep">
       <h2>Anything standing out</h2>
-      <p class="report-meta">Foods followed by symptoms more often than the days without them, over this range. Symptoms within ${esc(windowWords(S.settings.windowHours))} of a meal count as following it${stands.length > 1 ? `; ${esc(windowWords(S.settings.directWindowHours))} for food ${esc(name || 'the baby')} ate directly` : ''}. Being followed by symptoms is not the same as causing them.</p>
+      <p class="report-meta">Each food's days against the days without it, over this range, from when symptom tracking began: the daily symptom load of a day it was eaten, on average, and of a day it was not. ${STANDOUT_RULE} ${CAUSE_NOTE}</p>
       ${stands.map((r) => `${stands.length > 1 ? `<h3>${esc(PATHWAY_WORDS[r.who]())}</h3>` : ''}${r.standing.length
         ? r.standing.map((row) => `<p class="standout-row">${esc(standoutText(row))}</p><p class="report-meta">${esc(standoutDatesText(row).join(' '))}</p>`).join('')
-        : `<p class="report-meta">${esc(standoutEmpty(r, rangeName))}</p>`}`).join('')}
+        : `<p class="report-meta">${esc(standoutEmpty(r, rangeName))}</p>`}${r.everyday.length ? `<p class="report-meta">${esc(everydayText(r))}</p>` : ''}`).join('')}
+      ${safeFoods().length || safeTags().length ? `<p class="report-meta">Marked safe by the parent and left out: ${esc([...safeTags(), ...safeFoods()].map((x) => x.label).join(', '))}.</p>` : ''}
+    </section>
+    <section class="keep">
+      <h2>New foods</h2>
+      <p class="report-meta">Foods eaten for the first time in this range, and how that day and the next went. One occasion each; nothing is ranked.</p>
+      ${fresh.map((r) => `${fresh.length > 1 ? `<h3>${esc(PATHWAY_WORDS[r.who]())}</h3>` : ''}${newFoodsHtml(r.list, rangeName)}`).join('')}
     </section>
     <section class="keep">
       <h2>For the next visit</h2>
-      <ul class="answers">${visitLines(outcomes, stands, rangeName).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
+      <ul class="answers">${visitLines(status, stands, range, rangeName).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
     </section>
     <section>
       <h2>Log</h2>
@@ -2918,7 +2983,7 @@ const oldMealTags = (it) => itemTags(S.meals.filter((m) => (m.tags || m.uncertai
 
 function foodListRow(it) {
   const hint = !it.reviewed ? tagsText(oldMealTags(it)) : '';
-  const sub = [tagsText(it) || 'No allergens', `logged ${plural(it.useCount || 0, 'time')}`, ...(hint ? [`its meal was tagged ${hint}`] : [])].join(' · ');
+  const sub = [tagsText(it) || 'No allergens', `logged ${plural(it.useCount || 0, 'time')}`, ...(it.safe ? ['marked safe'] : []), ...(hint ? [`its meal was tagged ${hint}`] : [])].join(' · ');
   return `<button class="row" data-act="food-item" data-id="${esc(it.id)}"><span class="row-main">${esc(it.label)}<span class="row-sub">${esc(sub)}</span></span>${ICON.right}</button>`;
 }
 
@@ -2947,7 +3012,7 @@ function openFoodsSheet() {
 function openFoodItemSheet(id) {
   const it = S.foodItems.find((x) => x.id === id);
   if (!it) return;
-  const d = { label: it.label, tags: [...it.tags], uncertain: [...it.uncertain], shown: !it.hidden };
+  const d = { label: it.label, tags: [...it.tags], uncertain: [...it.uncertain], shown: !it.hidden, safe: it.safe === true };
   const start = JSON.stringify(d);
   const old = !it.reviewed ? oldMealTags(it) : { tags: [], uncertain: [] };
   const problem = () => {
@@ -2966,6 +3031,7 @@ function openFoodItemSheet(id) {
       <div class="sect"><span class="sect-label">Allergens</span>${tagPickerHtml(d)}</div>
       ${tagsText(old) ? `<p class="caution-soft">It came from a saved meal tagged ${esc(tagsSentence(old).toLowerCase())}. Tap the ones this food holds.</p>` : ''}
       <button class="switchrow" data-act="food-shown" role="switch" aria-checked="${d.shown}"><span>Show in the food picker</span><span class="switch" aria-hidden="true"></span></button>
+      <button class="switchrow" data-act="food-safe" role="switch" aria-checked="${d.safe}"><span>Marked safe<span class="row-sub">Left out of Trends' comparisons. Your call, and undoable here.</span></span><span class="switch" aria-hidden="true"></span></button>
       <button class="btn addbtn" data-act="food-merge">Merge into another food</button>
       <p class="fine sect">Logged ${plural(it.useCount || 0, 'time')}. Saving marks it reviewed.</p>`,
     foot: `<p class="foot-hint">${state().hint}</p><button class="btn btn-primary" data-act="food-save" data-primary${state().disabled ? ' disabled' : ''}>Save</button>`,
@@ -2973,11 +3039,13 @@ function openFoodItemSheet(id) {
     actions: {
       tag: tagAction(d),
       'food-shown': (b) => { d.shown = !d.shown; b.setAttribute('aria-checked', d.shown); },
+      'food-safe': (b) => { d.safe = !d.safe; b.setAttribute('aria-checked', d.safe); },
       'food-merge': () => { leaving = true; openMergeSheet(it.id); },
       'food-save': () => {
         if (problem()) return;
         Object.assign(it, { label: d.label.trim().replace(/\s+/g, ' '), tags: [...d.tags], uncertain: [...d.uncertain], reviewed: true });
         if (d.shown) delete it.hidden; else it.hidden = true;
+        if (d.safe) it.safe = true; else delete it.safe;
         settleReview();
         save();
         closeSheet();
@@ -3757,8 +3825,8 @@ const ACTIONS = {
   'day-next': () => pageDay(1),
   'day-today': () => { U.day = null; render(); },
   'trend-range': (el) => { U.trendRange = el.dataset.range; render(); },
-  window: (el) => { S.settings.windowHours = +el.dataset.hours; save(); render(); },
-  'direct-window': (el) => { S.settings.directWindowHours = +el.dataset.hours; save(); render(); },
+  'mark-safe': (el) => markSafe(el.dataset.keys),
+  'unmark-safe': (el) => unmarkSafe(el.dataset.kind, el.dataset.id),
   'open-report': () => showReport(),
   'report-close': () => { showScreen('app'); render(); },
   'report-print': () => printReport(),

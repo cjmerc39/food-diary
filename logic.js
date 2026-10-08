@@ -3,17 +3,11 @@
 // Nothing here touches the DOM, storage, or the clock: callers pass `now` in.
 
 export const STATE_VERSION = 2;
-// Through breast milk, most reactions show within a day or two; some, skin
-// especially, take longer, so the window runs up to a week.
+// Earlier builds compared foods by a window of hours after each meal; Trends
+// now compares whole days, so nothing reads these settings. They stay valid in
+// stored diaries, so the choices are kept only to check them.
 export const WINDOW_CHOICES = [6, 12, 24, 48, 72, 96, 120, 168];
-// Food the baby eats directly reacts faster than food reaching the milk: 1 to 4 hours, typically.
 export const DIRECT_WINDOW_CHOICES = [1, 2, 4, 8];
-// A window in words: hours up to 72h, days from there ("5 days"); the chip form is "5d".
-export const windowText = (h) => (h >= 96 ? `${h / 24} days` : `${h}h`);
-export const windowChip = (h) => (h >= 96 ? `${h / 24}d` : `${h}h`);
-// Past three days, consecutive windows overlap so much that a food eaten most
-// days holds nearly every symptom, and everything drifts toward 1x.
-export const LONG_WINDOW = 96;
 
 // Two exposure pathways: what the parent eats reaches the baby through breast
 // milk; once solids start, the baby's own food is the second. Older entries
@@ -240,7 +234,9 @@ export function searchMeals(meals, query) {
 // when logged, so editing a food never rewrites history. Merging one food into
 // another leaves the old one behind as an alias (mergedInto): past entries,
 // which never change, then count toward the food it became.
-//   Food = { id, label, tags, uncertain, useCount, lastUsed, reviewed, hidden?, mergedInto? }
+//   Food = { id, label, tags, uncertain, useCount, lastUsed, reviewed, hidden?, mergedInto?, safe? }
+// `safe` is hers alone: a food she has decided is fine, kept out of Trends'
+// comparisons until she says otherwise. The app never sets or suggests it.
 
 export const hasItems = (e) => Array.isArray(e.items) && e.items.length > 0;
 
@@ -624,128 +620,175 @@ export function reintroWatches(state, now) {
     });
 }
 
-// ---- is it working ---------------------------------------------------------------
-// For each elimination, the two weeks before it started against the time since,
-// in plain counts: average daily symptom load, and days with any symptom. Days
-// count from the diary's first entry on, so a quiet day is a day with none.
-// Too little on either side, and the row says that instead.
-//   verdict: 'compare' | 'young' (too few days since) | 'no-before' (too few days logged before)
-export const COMPARE_BEFORE_DAYS = 14;
-export const COMPARE_MIN_BEFORE = 3;
-export const COMPARE_MIN_SINCE = 7;
+// ---- where things stand ----------------------------------------------------------
+// Symptom tracking begins with the first symptom entry. The days before it
+// hold food but say nothing about symptoms, so every comparison starts there.
+// A day with nothing logged at all counts for neither side of anything.
 
-function daySpan(state, byDay, fromDay, toDay) {
-  const first = firstEntryDay(state);
-  const from = first && first > fromDay ? first : fromDay;
-  const span = { days: 0, avgLoad: 0, symptomDays: 0 };
-  if (!first || toDay < from) return span;
-  let load = 0;
-  for (let d = from; d <= toDay; d = addDays(d, 1)) {
-    const entries = byDay.get(d) || [];
-    span.days++;
-    load += dayLoad(entries, d).load;
-    if (entries.length) span.symptomDays++;
-  }
-  span.avgLoad = span.days ? load / span.days : 0;
-  return span;
+export function trackingStart(state) {
+  let first = null;
+  for (const e of state.symptomLog) if (isTs(e.ts) && (first === null || e.ts < first)) first = e.ts;
+  return first && dayKey(first);
 }
 
-export function eliminationOutcomes(state, today) {
-  const byDay = bucketByDay(state.symptomLog);
-  const started = state.phases.filter((p) => p.kind === 'eliminate' && isTs(p.start) && dayKey(p.start) <= today);
-  return sortPhases(started, `${today}T12:00`).map((phase) => {
-    const startDay = dayKey(phase.start);
-    const lastDay = phase.end ? addDays(dayKey(phase.end), -1) : today;
-    const sinceTo = lastDay < today ? lastDay : today;
-    const before = daySpan(state, byDay, addDays(startDay, -COMPARE_BEFORE_DAYS), addDays(startDay, -1));
-    const since = daySpan(state, byDay, startDay, sinceTo);
-    const verdict = since.days < COMPARE_MIN_SINCE ? 'young' : before.days < COMPARE_MIN_BEFORE ? 'no-before' : 'compare';
-    return { phase, startDay, sinceTo, ended: phase.end != null && dayKey(phase.end) <= today, before, since, verdict };
-  });
+// Days from fromDay through toDay with any entry, each with its symptom load.
+// A day with food logged and no symptom is a quiet day, load 0.
+function loggedDays(state, fromDay, toDay) {
+  const days = new Map();
+  for (const e of state.foodLog) {
+    if (!isTs(e.ts)) continue;
+    const d = dayKey(e.ts);
+    if (d >= fromDay && d <= toDay && !days.has(d)) days.set(d, 0);
+  }
+  for (const [d, entries] of bucketByDay(state.symptomLog)) {
+    if (d >= fromDay && d <= toDay) days.set(d, dayLoad(entries, d).load);
+  }
+  return days;
+}
+
+const avg = (nums) => (nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0);
+const byStart = (a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0);
+
+// What is out (and back) right now and since when, and how the range has gone
+// in her own terms: days with entries since tracking began, and how many of
+// them had a symptom logged. No comparison with anything.
+//   { out: [{ phase, tag, startDay, day }], back: [...], trackingStart, from, days, symptomDays }
+export function statusNow(state, { fromDay, today }) {
+  const now = `${today}T23:59`;
+  const live = [...state.phases].filter((p) => isTs(p.start) && isPhaseActive(p, now)).sort(byStart)
+    .map((p) => ({ phase: p, tag: p.tag, startDay: dayKey(p.start), day: phaseDay(p, now) }));
+  const start = trackingStart(state);
+  const from = start && start > fromDay ? start : fromDay;
+  const days = start ? loggedDays(state, from, today) : new Map();
+  const symptomDays = bucketByDay(state.symptomLog);
+  let withSymptoms = 0;
+  for (const d of days.keys()) if (symptomDays.has(d)) withSymptoms++;
+  return {
+    out: live.filter((p) => p.phase.kind === 'eliminate'),
+    back: live.filter((p) => p.phase.kind === 'reintroduce'),
+    trackingStart: start, from, days: days.size, symptomDays: withSymptoms,
+  };
 }
 
 // ---- anything standing out ------------------------------------------------------------
 // Every food through one pathway (an allergen tag, a picked food, or an older
-// entry's name, all just foods here) against the days it wasn't eaten, in plain
-// counts. An eating is followed when any symptom is logged inside the window
-// after it. A day without the food is followed when any symptom comes inside
-// the same window after that day's first meal through the same pathway, so
-// both sides are measured from a meal. Eatings whose window hasn't finished
-// are left out of the counts and listed as too soon to tell. A tag and a food
-// made of exactly the same eatings are one row, named for the tag.
-//   row: { key, kind, label, also, who, windowHours, eaten, eatenDays, followed, pending,
-//          otherDays, otherFollowed, gap, dates: [{ id, day, ts, name, possible, pending, followed }],
-//          otherDates: [{ day, followed }] }
-export const STANDOUT_MIN_EATEN = 3;   // finished eatings, on as many separate days
-export const STANDOUT_MIN_OTHER = 3;   // days without the food
-export const STANDOUT_GAP = 0.25;      // share followed when eaten, minus the share on other days
+// entry's name, all just foods here) by the days it was eaten against the days
+// it was not, from when symptom tracking began: the symptom load of a day it
+// was eaten, on average, against the load of a day it was not. Both sides are
+// days with entries. A food needs STANDOUT_MIN_EATEN days eaten and
+// STANDOUT_MIN_NOT days without it; one eaten most days has too few days
+// without it to compare against anything, and is listed as such instead. Foods
+// and tags she marked safe are left out. A food stands out when every day it
+// was eaten was heavier than the average day without it, and by STANDOUT_GAP
+// load points or more on average, so one rough day can't carry a food on its
+// own. The rule is fixed, not tuned to make rows appear: on most diaries the
+// answer is that nothing stands out, and that is a real answer. A tag and a
+// food eaten on exactly the same days are one row, named for the tag.
+//   row: { key, kind, label, id?, also, who, eatenDays, notDays, avgEaten, avgNot, gap, heavier,
+//          dates: [{ day, load, possible }] }
+export const STANDOUT_MIN_EATEN = 2;
+export const STANDOUT_MIN_NOT = 5;
+export const STANDOUT_GAP = 2;       // load points between the two averages
 export const STANDOUT_LIMIT = 3;
 
-export function standingOut(state, { fromDay, today, now, settings, who }) {
-  const windowHours = who === 'baby' ? settings.directWindowHours : settings.windowHours;
-  const windowMs = windowHours * HOUR;
-  const nowMs = tsMs(now);
-  const index = symptomIndex(state.symptomLog);
-  const first = firstEntryDay(state);
-  const from = first && first > fromDay ? first : fromDay;
-  const events = state.foodLog
-    .filter((e) => isTs(e.ts) && eventWho(e) === who && dayKey(e.ts) >= from && dayKey(e.ts) <= today)
-    .sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
-  const firstMeal = new Map();   // day -> that day's first meal through this pathway
-  for (const e of events) if (!firstMeal.has(dayKey(e.ts))) firstMeal.set(dayKey(e.ts), e);
-  const finished = (e) => tsMs(e.ts) + windowMs <= nowMs;
-  const followedAfter = (e) => index.between(tsMs(e.ts), tsMs(e.ts) + windowMs).points > 0;
+const safeTagsOf = (state) => new Set((state.settings && state.settings.safeTags) || []);
 
+// The groups one entry counts toward: its tags (safe ones skipped), its foods
+// (safe ones skipped), or its name when it predates picked foods.
+function entryGroups(state, e, safeTags) {
+  const out = [];
+  const tags = [...new Set(e.tags || [])];
+  const maybe = [...new Set((e.uncertain || []).filter((t) => !tags.includes(t)))];
+  for (const t of [...tags, ...maybe]) if (!safeTags.has(t)) out.push({ key: `tag:${t}`, kind: 'tag', label: t, possible: maybe.includes(t) });
+  const items = hasItems(e) ? resolveItems(state.foodItems, e.items) : [];
+  for (const it of items) if (!it.safe) out.push({ key: `food:${it.id}`, kind: 'food', label: it.label, id: it.id, possible: false });
+  if (!items.length && normName(e.name || '')) out.push({ key: `name:${normName(e.name)}`, kind: 'name', label: String(e.name).trim(), possible: false });
+  return out;
+}
+
+const KIND_ORDER = { tag: 0, food: 1, name: 2 };
+
+export function standingOut(state, { fromDay, today, who }) {
+  const start = trackingStart(state);
+  const from = start && start > fromDay ? start : fromDay;
+  const base = { who, from, trackingStart: start, loggedDays: 0, enough: false, usual: 0, standing: [], everyday: [], compared: 0, rows: [] };
+  if (!start || from > today) return base;
+  const days = loggedDays(state, from, today);
+  const safeTags = safeTagsOf(state);
   const groups = new Map();
-  const add = (key, kind, label, e, possible) => {
-    if (!groups.has(key)) groups.set(key, { key, kind, label, eatings: [] });
-    groups.get(key).eatings.push({ e, possible });
-  };
-  for (const e of events) {
-    const tags = [...new Set(e.tags || [])];
-    for (const t of tags) add(`tag:${t}`, 'tag', t, e, false);
-    for (const t of new Set((e.uncertain || []).filter((t) => !tags.includes(t)))) add(`tag:${t}`, 'tag', t, e, true);
-    if (hasItems(e)) for (const it of resolveItems(state.foodItems, e.items)) add(`food:${it.id}`, 'food', it.label, e, false);
-    else if (normName(e.name || '')) add(`name:${normName(e.name)}`, 'name', String(e.name).trim(), e, false);
+  for (const e of state.foodLog) {
+    if (!isTs(e.ts) || eventWho(e) !== who) continue;
+    const d = dayKey(e.ts);
+    if (d < from || d > today) continue;
+    for (const g of entryGroups(state, e, safeTags)) {
+      if (!groups.has(g.key)) groups.set(g.key, { key: g.key, kind: g.kind, label: g.label, id: g.id, days: new Map() });
+      const grp = groups.get(g.key);
+      // A day is only "possibly" when every entry that day was.
+      grp.days.set(d, grp.days.has(d) ? grp.days.get(d) && g.possible : g.possible);
+    }
   }
-
   const rows = [];
   for (const g of groups.values()) {
-    const dates = g.eatings.map(({ e, possible }) => {
-      const done = finished(e);
-      return { id: e.id, day: dayKey(e.ts), ts: e.ts, name: e.name, possible, pending: !done, followed: done && followedAfter(e) };
+    const dates = [...g.days.keys()].sort().map((day) => ({ day, load: days.get(day) || 0, possible: g.days.get(day) }));
+    const notLoads = [...days].filter(([day]) => !g.days.has(day)).map(([, load]) => load);
+    const avgEaten = avg(dates.map((d) => d.load)), avgNot = avg(notLoads);
+    rows.push({
+      key: g.key, kind: g.kind, label: g.label, id: g.id, also: [], who,
+      eatenDays: dates.length, notDays: notLoads.length, avgEaten, avgNot, gap: avgEaten - avgNot,
+      heavier: dates.filter((d) => d.load > avgNot).length, dates,
     });
-    const done = dates.filter((d) => !d.pending);
-    const eatenDays = new Set(dates.map((d) => d.day));
-    const otherDates = [...firstMeal].filter(([day, e]) => !eatenDays.has(day) && finished(e)).map(([day, e]) => ({ day, followed: followedAfter(e) }));
-    const row = {
-      key: g.key, kind: g.kind, label: g.label, also: [], who, windowHours,
-      eaten: done.length, eatenDays: new Set(done.map((d) => d.day)).size, followed: done.filter((d) => d.followed).length, pending: dates.length - done.length,
-      otherDays: otherDates.length, otherFollowed: otherDates.filter((d) => d.followed).length, dates, otherDates,
-    };
-    row.gap = row.eaten && row.otherDays ? row.followed / row.eaten - row.otherFollowed / row.otherDays : 0;
-    rows.push(row);
   }
-  // The same eatings under two names are one thing.
-  const order = { tag: 0, food: 1, name: 2 };
-  rows.sort((a, b) => order[a.kind] - order[b.kind] || a.label.localeCompare(b.label));
+  // The same days under two names are one thing.
+  rows.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.label.localeCompare(b.label));
   const bySig = new Map();
   const kept = [];
   for (const r of rows) {
-    const sig = r.dates.map((d) => d.id).sort().join(',');
+    const sig = r.dates.map((d) => d.day).join(',');
     const same = bySig.get(sig);
-    if (same) same.also.push({ kind: r.kind, label: r.label });
+    if (same) same.also.push({ kind: r.kind, label: r.label, ...(r.id ? { id: r.id } : {}) });
     else { bySig.set(sig, r); kept.push(r); }
   }
-  const enough = (r) => r.eaten >= STANDOUT_MIN_EATEN && r.eatenDays >= STANDOUT_MIN_EATEN && r.otherDays >= STANDOUT_MIN_OTHER;
-  const standing = kept.filter((r) => enough(r) && r.gap >= STANDOUT_GAP)
-    .sort((a, b) => b.gap - a.gap || b.followed - a.followed || a.label.localeCompare(b.label))
+  const enough = days.size >= STANDOUT_MIN_EATEN + STANDOUT_MIN_NOT;
+  const compared = kept.filter((r) => r.eatenDays >= STANDOUT_MIN_EATEN && r.notDays >= STANDOUT_MIN_NOT);
+  const everyday = enough ? kept.filter((r) => r.notDays < STANDOUT_MIN_NOT).sort((a, b) => b.eatenDays - a.eatenDays || a.label.localeCompare(b.label)) : [];
+  const standing = compared.filter((r) => r.gap >= STANDOUT_GAP && r.heavier === r.eatenDays)
+    .sort((a, b) => b.gap - a.gap || b.eatenDays - a.eatenDays || a.label.localeCompare(b.label))
     .slice(0, STANDOUT_LIMIT);
-  return { who, windowHours, standing, compared: kept.filter(enough).length, foods: kept.length, rows: kept };
+  return { ...base, loggedDays: days.size, enough, usual: avg([...days.values()]), standing, everyday, compared: compared.length, rows: kept };
 }
 
-// A window in plain words for a sentence: "24 hours", "4 hours", "5 days".
-export const windowWords = (h) => (h <= 72 ? `${h} hours` : `${h / 24} days`);
+// ---- new foods -------------------------------------------------------------------
+// Foods eaten for the first time in range, from when symptom tracking began,
+// each with the symptom load of that day and the next against the other days
+// in range. An observation about one occasion: never ranked, never part of
+// what stands out. Safe foods are left out here too; tags are not foods here.
+//   { key, kind, label, id?, day, load, next: { day, load (null when nothing was logged), pending }, otherDays, others }
+export function newFoods(state, { fromDay, today, who }) {
+  const start = trackingStart(state);
+  const from = start && start > fromDay ? start : fromDay;
+  if (!start || from > today) return [];
+  const days = loggedDays(state, from, today);
+  const safeTags = safeTagsOf(state);
+  const firstDay = new Map();
+  const log = state.foodLog.filter((e) => isTs(e.ts) && eventWho(e) === who).sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+  for (const e of log) {
+    for (const g of entryGroups(state, e, safeTags)) {
+      if (g.kind !== 'tag' && !firstDay.has(g.key)) firstDay.set(g.key, { key: g.key, kind: g.kind, label: g.label, id: g.id, day: dayKey(e.ts) });
+    }
+  }
+  const out = [];
+  for (const f of firstDay.values()) {
+    if (f.day < from || f.day > today) continue;
+    const next = addDays(f.day, 1);
+    const others = [...days].filter(([d]) => d !== f.day && d !== next).map(([, load]) => load);
+    out.push({
+      ...f, load: days.get(f.day) || 0,
+      next: { day: next, load: days.has(next) ? days.get(next) : null, pending: next >= today },
+      otherDays: others.length, others: avg(others),
+    });
+  }
+  return out.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : a.label.localeCompare(b.label)));
+}
 
 // ---- trends and report -------------------------------------------------------
 
@@ -862,6 +905,7 @@ export function mergeStates(current, incoming) {
   out.settings.customTags = [...current.settings.customTags,
     ...incoming.settings.customTags.filter((t) => isObj(t) && t.id && !customIds.has(t.id))];
   out.settings.hiddenTags = [...new Set([...current.settings.hiddenTags, ...incoming.settings.hiddenTags])];
+  out.settings.safeTags = [...new Set([...(current.settings.safeTags || []), ...(incoming.settings.safeTags || [])])];
   out.dismissed = [...new Set([...current.dismissed, ...incoming.dismissed])];
   if (!out.babyName && incoming.babyName) out.babyName = incoming.babyName;
   if (incoming.lastBackup && (!out.lastBackup || incoming.lastBackup > out.lastBackup)) out.lastBackup = incoming.lastBackup;
@@ -942,6 +986,7 @@ export function sanitizeDiary(s) {
       useCount: count(it.useCount), lastUsed: isTs(it.lastUsed) ? it.lastUsed : null, reviewed: it.reviewed === true,
     };
     if (it.hidden === true) out.hidden = true; else delete out.hidden;
+    if (it.safe === true) out.safe = true; else delete out.safe;
     if (typeof it.mergedInto === 'string' && SAFE_ID.test(it.mergedInto) && it.mergedInto !== it.id) out.mergedInto = it.mergedInto;
     else delete out.mergedInto;
     return out;
@@ -1040,7 +1085,7 @@ export function sanitizeDiary(s) {
     state: {
       ...s,
       babyName: text(s.babyName, 40),
-      settings: { ...s.settings, customTags, hiddenTags: tagList(s.settings.hiddenTags) },
+      settings: { ...s.settings, customTags, hiddenTags: tagList(s.settings.hiddenTags), safeTags: tagList(s.settings.safeTags) },
       foodItems, meals, foodLog, symptomLog, symptomSets, phases,
       dismissed: s.dismissed.filter((k) => typeof k === 'string').slice(0, 500),
     },
@@ -1069,10 +1114,11 @@ export function freshState() {
     onboarded: false,
     babyName: '',
     settings: {
-      windowHours: 24,        // symptoms window after the parent eats a food (through breast milk)
-      directWindowHours: 4,   // symptoms window after the baby eats a food directly
+      windowHours: 24,        // from earlier builds; nothing reads it now
+      directWindowHours: 4,   // from earlier builds; nothing reads it now
       customTags: [],   // [{ id, label }], id slugified from label
       hiddenTags: [],   // tag ids hidden from pickers, never deleted
+      safeTags: [],     // allergen tags she marked safe: left out of Trends' comparisons
     },
     foodItems: [],      // [Food], see the foods section: the picker's list, grown as she logs
     meals: [],          // [{ id, name, items: [foodId], useCount, lastUsed, tags?, uncertain? }]: named bundles of foods
@@ -1172,7 +1218,7 @@ export function normalizeState(s) {
   if (!DIRECT_WINDOW_CHOICES.includes(out.settings.directWindowHours)) {
     out.settings.directWindowHours = base.settings.directWindowHours;
   }
-  for (const k of ['customTags', 'hiddenTags']) {
+  for (const k of ['customTags', 'hiddenTags', 'safeTags']) {
     if (!Array.isArray(out.settings[k])) out.settings[k] = [];
   }
   for (const k of ['foodItems', 'meals', 'foodLog', 'symptomLog', 'symptomSets', 'phases', 'dismissed']) {

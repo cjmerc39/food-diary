@@ -67,35 +67,47 @@ own files so it works offline; the diary itself lives only in localStorage.
   and foods are shared. Baby entries carry a small name pill on Today. Exposure banners
   and the reintroduction watch fire for both pathways and say who ate the food.
 - **Trends:** the symptom load chart with one track per phase food behind
-  the line, the per-category strips, and then three answers in plain counts,
-  in this order. **Is it working**: one sentence per elimination comparing
-  the two weeks before it started with the time since (average daily load,
-  and days with any symptom); a phase too young, or one that began before the
-  diary did, says so in one line instead. **Anything standing out**: at most
-  three foods per pathway, each one sentence: how many times it was eaten, how
-  many were followed by symptoms within the window, and the same for the days
-  it wasn't eaten (measured from that day's first meal). Allergen tags and
-  picked foods are one list; tapping a row shows the dates behind every
-  count. If nothing separates from the rest, one line says so. **For the next
-  visit**: the same findings as lines to read aloud to the pediatrician; the
-  report carries the identical lines. No multiples, ratios, scores, or
-  confidence labels anywhere, and no advice on what to eliminate or
-  reintroduce next. The two pathways (what she ate, through breast milk; what
-  the baby ate, once he has eaten anything) are described in plain words. The
-  windows that decide what "followed" means live in More: 24h by default via
-  breast milk (6h to 7 days), 4h for his own food (1/2/4/8). A window of four
-  days or more shows a note there: a food eaten most days is then followed by
-  nearly every symptom, so little will stand out. The ordering behind
-  "standing out" lives in `logic.js` (`standingOut`): a food needs 3 days
-  eaten and 3 days without, and its share of eatings followed by symptoms has
-  to beat the share on days without it by a quarter. Older entries from
-  before foods were picked fold in by name.
+  the line, the per-category strips, and then four answers in plain counts,
+  in this order. **Where things stand**: what is out (and back) right now and
+  since when, with the day number, then how the range went in her own terms:
+  how many days have entries and on how many of them a symptom was logged. No
+  averages, no before-and-after; eliminations are standing constraints, not
+  experiments the app grades. **Anything standing out**: each food's days
+  against the days without it, by daily symptom load, counted only from the
+  first symptom entry on (`trackingStart`): days before symptom tracking
+  began hold food but say nothing about symptoms, and days with nothing
+  logged count for neither side. A food needs 2 days eaten and 5 days
+  without it; one eaten most days has too few days without it and is named
+  under one line as eaten too often to compare against anything. A food is
+  listed only when every day it was eaten was heavier than the days without
+  it, by 2 load points or more on average; at most three per pathway, each
+  one sentence, with its days (and each day's load) a tap away. The rule is
+  fixed, not tuned to make rows appear: on most diaries nothing stands out,
+  and that is written as a real answer. **New foods**: foods eaten for the
+  first time in range, each with the load of that day and the next against
+  the other days; one occasion each, never ranked, never fed into the
+  standing-out list. **For the next visit**: where things stand plus the
+  standing-out answer, as lines to read aloud to the pediatrician; the report
+  carries the identical lines. No multiples, ratios, scores, confidence
+  labels, or statistical words anywhere, and no advice on what to eliminate
+  or reintroduce next. The two pathways (what she ate, through breast milk;
+  what the baby ate, once he has eaten anything) are described in plain words.
+  Older entries from before foods were picked fold in by name. The old
+  windows of hours after a meal are gone from More; the stored settings stay
+  valid but nothing reads them.
+- **Mark safe:** her call alone, never suggested by the app. From a
+  standing-out row (tap it, then "Mark … safe") or from a food's sheet in
+  More > Foods. Safe foods carry `safe: true`; a tag marked from a row goes
+  into `settings.safeTags` (a row that is a tag and a food on the same days
+  marks both). Safe foods and tags are left out of the comparison and of new
+  foods, and collected under a reopenable "marked safe" line in that card,
+  each with a "Not safe" button. State stays at v2.
 - **Phases:** eliminations and reintroductions. They drive the exposure
   banners on Today and the 72-hour reintroduction watch card.
 - **More > Report:** a print-styled summary for the pediatrician, with a Who
-  column in the log (stool counts and colors included) and the same three
-  answers as Trends: is it working, anything standing out (with the dates),
-  and for the next visit. Print (it
+  column in the log (stool counts and colors included) and the same four
+  answers as Trends: where things stand, anything standing out (with the
+  days), new foods, and for the next visit. Print (it
   works from the Home Screen app), save a PDF from the print preview, or
   **Share as a file** for a printable copy in Files, Mail, or AirDrop.
 - **More > Back up now:** saves the whole diary as a JSON file through the
@@ -127,7 +139,7 @@ own files so it works offline; the diary itself lives only in localStorage.
 | File | What it is |
 | --- | --- |
 | `index.html` | The whole app: markup, styles, UI code |
-| `logic.js` | Pure computation shared by the browser and the tests: time and day math, phases, meals, foods and tags, symptom load and stool counts, the three Trends answers (elimination outcomes and foods standing out), the v1 to v2 migration, trends ranges, backups (reading, checking, merging, including symptom sets), the backup reminder, and which mark a quiet day shows |
+| `logic.js` | Pure computation shared by the browser and the tests: time and day math, phases, meals, foods and tags, symptom load and stool counts, the Trends answers (where things stand, foods standing out by day loads from the first symptom entry on, new foods), the v1 to v2 migration, trends ranges, backups (reading, checking, merging, including symptom sets), the backup reminder, and which mark a quiet day shows |
 | `logic.test.js` | Tests for `logic.js` |
 | `sw.js` | Cache-first service worker for the app shell |
 | `manifest.json` | PWA manifest |
