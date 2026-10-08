@@ -624,273 +624,128 @@ export function reintroWatches(state, now) {
     });
 }
 
-// ---- suspects ----------------------------------------------------------------
-// For each tag eaten in the range, how symptom points after eating it compare
-// with the range's usual rate.
-//   exposure      a food event carrying the tag; possibly-hidden counts half
-//   points after  severities plus flag points in the window after the exposure
-//   baseline      all points in the range / hours in the range * window hours
-//   ratio         weight-averaged points after exposure / baseline
-// An exposure whose window is still open at `now` is "watching": listed, but
-// left out of the math because its tally is still growing. Windows may run
-// past `to`. Overlapping windows share symptom events, so one flare can count
-// toward several exposures and several tags eaten together; that is fine for
-// a hint list, and it is why the UI says correlation, not diagnosis.
-// `who` scores one pathway with its own window (see suspectsByPathway); null
-// scores every exposure together.
-export function suspects(state, { from, to, windowHours, now, minWeight = 2, who = null }) {
-  const groups = exposureGroups(state.foodLog, who, tagKeys);
-  return scoreGroups(state, groups, { from, to, windowHours, now, minWeight, who });
-}
+// ---- is it working ---------------------------------------------------------------
+// For each elimination, the two weeks before it started against the time since,
+// in plain counts: average daily symptom load, and days with any symptom. Days
+// count from the diary's first entry on, so a quiet day is a day with none.
+// Too little on either side, and the row says that instead.
+//   verdict: 'compare' | 'young' (too few days since) | 'no-before' (too few days logged before)
+export const COMPARE_BEFORE_DAYS = 14;
+export const COMPARE_MIN_BEFORE = 3;
+export const COMPARE_MIN_SINCE = 7;
 
-// A food event's allergen tags as [tag, possiblyHidden] pairs, each once.
-const tagKeys = (e) => {
-  const tags = [...new Set(e.tags || [])];
-  return [...tags.map((t) => [t, false]), ...[...new Set(e.uncertain || [])].filter((t) => !tags.includes(t)).map((t) => [t, true])];
-};
-
-// Every food event, grouped into exposures by key (a tag, or a typed word),
-// oldest first within each group. keysOf(e) gives [key, possiblyHidden] pairs.
-function exposureGroups(foodLog, who, keysOf) {
-  const groups = new Map();
-  for (const e of foodLog) {
-    if (!isTs(e.ts) || (who && eventWho(e) !== who)) continue;
-    const ms = tsMs(e.ts);
-    for (const [key, uncertain] of keysOf(e)) {
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push({ event: e, ts: e.ts, ms, uncertain, weight: uncertain ? 0.5 : 1, who: eventWho(e) });
-    }
-  }
-  for (const list of groups.values()) list.sort((a, b) => a.ms - b.ms);
-  return groups;
-}
-
-// ---- how much a row can be trusted ------------------------------------------
-// A plain average is as loud on two exposures as on twenty. So every food
-// starts at 1x, as if PRIOR_STRETCHES typical stretches had already been
-// logged for it, and each real exposure moves it: two can move it only
-// partway, twenty nearly all the way. (The Bayesian average behind IMDb's
-// ratings; the shrinkage behind medical league tables.) `ratio` stays the
-// plain average; `adjusted` is what the app shows and ranks by.
-export const PRIOR_STRETCHES = 3;
-
-// How much there is to go on. Early rows are listed but never ranked among
-// the rest: fewer than 3 finished exposures on 3 separate days is too few to
-// judge, whatever the number says.
-export const EVIDENCE = ['early', 'building', 'established'];
-export const evidenceOf = (row) =>
-  (row.weight >= 6 && row.completeDays >= 6 ? 'established' : row.weight >= 3 && row.completeDays >= 3 ? 'building' : 'early');
-
-// Lower bound of the 95% Wilson score interval for k of n: the fraction the
-// data can vouch for. 2 of 2 comes out near 0.3; 20 of 20 near 0.84.
-export function wilsonLow(k, n) {
-  if (!n) return 0;
-  const z = 1.96, p = k / n, zz = z * z;
-  return (p + zz / (2 * n) - z * Math.sqrt((p * (1 - p) + zz / (4 * n)) / n)) / (1 + zz / n);
-}
-
-// The suspects math, shared by allergen tags and typed words. Rows carry the
-// key as `tag`. `days` counts the separate days eaten in range; `completeDays`
-// the days among exposures whose window has finished. A row is scored once
-// its finished exposures weigh minWeight and span minDays separate days.
-function scoreGroups(state, groups, { from, to, windowHours, now, minWeight = 2, minDays = 0, who = null }) {
-  const nowMs = tsMs(now);
-  // A diary younger than the range has no data before its first entry.
-  // Counting those empty hours would shrink the baseline and inflate ratios.
+function daySpan(state, byDay, fromDay, toDay) {
   const first = firstEntryDay(state);
-  const fromMs = tsMs(first && `${first}T00:00` > from ? `${first}T00:00` : from);
-  // A range may end later than now ("through today"); hours that haven't
-  // happened yet would dilute the baseline and inflate every ratio.
-  const toMs = Math.min(tsMs(to), nowMs);
+  const from = first && first > fromDay ? first : fromDay;
+  const span = { days: 0, avgLoad: 0, symptomDays: 0 };
+  if (!first || toDay < from) return span;
+  let load = 0;
+  for (let d = from; d <= toDay; d = addDays(d, 1)) {
+    const entries = byDay.get(d) || [];
+    span.days++;
+    load += dayLoad(entries, d).load;
+    if (entries.length) span.symptomDays++;
+  }
+  span.avgLoad = span.days ? load / span.days : 0;
+  return span;
+}
+
+export function eliminationOutcomes(state, today) {
+  const byDay = bucketByDay(state.symptomLog);
+  const started = state.phases.filter((p) => p.kind === 'eliminate' && isTs(p.start) && dayKey(p.start) <= today);
+  return sortPhases(started, `${today}T12:00`).map((phase) => {
+    const startDay = dayKey(phase.start);
+    const lastDay = phase.end ? addDays(dayKey(phase.end), -1) : today;
+    const sinceTo = lastDay < today ? lastDay : today;
+    const before = daySpan(state, byDay, addDays(startDay, -COMPARE_BEFORE_DAYS), addDays(startDay, -1));
+    const since = daySpan(state, byDay, startDay, sinceTo);
+    const verdict = since.days < COMPARE_MIN_SINCE ? 'young' : before.days < COMPARE_MIN_BEFORE ? 'no-before' : 'compare';
+    return { phase, startDay, sinceTo, ended: phase.end != null && dayKey(phase.end) <= today, before, since, verdict };
+  });
+}
+
+// ---- anything standing out ------------------------------------------------------------
+// Every food through one pathway (an allergen tag, a picked food, or an older
+// entry's name, all just foods here) against the days it wasn't eaten, in plain
+// counts. An eating is followed when any symptom is logged inside the window
+// after it. A day without the food is followed when any symptom comes inside
+// the same window after that day's first meal through the same pathway, so
+// both sides are measured from a meal. Eatings whose window hasn't finished
+// are left out of the counts and listed as too soon to tell. A tag and a food
+// made of exactly the same eatings are one row, named for the tag.
+//   row: { key, kind, label, also, who, windowHours, eaten, eatenDays, followed, pending,
+//          otherDays, otherFollowed, gap, dates: [{ id, day, ts, name, possible, pending, followed }],
+//          otherDates: [{ day, followed }] }
+export const STANDOUT_MIN_EATEN = 3;   // finished eatings, on as many separate days
+export const STANDOUT_MIN_OTHER = 3;   // days without the food
+export const STANDOUT_GAP = 0.25;      // share followed when eaten, minus the share on other days
+export const STANDOUT_LIMIT = 3;
+
+export function standingOut(state, { fromDay, today, now, settings, who }) {
+  const windowHours = who === 'baby' ? settings.directWindowHours : settings.windowHours;
   const windowMs = windowHours * HOUR;
+  const nowMs = tsMs(now);
   const index = symptomIndex(state.symptomLog);
-  const hours = (toMs - fromMs) / HOUR;
-  const totalPoints = index.between(fromMs - 1, toMs).points;
-  const baseline = hours > 0 ? (totalPoints / hours) * windowHours : 0;
-  const dayCount = (list) => new Set(list.map((x) => dayKey(x.ts))).size;
+  const first = firstEntryDay(state);
+  const from = first && first > fromDay ? first : fromDay;
+  const events = state.foodLog
+    .filter((e) => isTs(e.ts) && eventWho(e) === who && dayKey(e.ts) >= from && dayKey(e.ts) <= today)
+    .sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+  const firstMeal = new Map();   // day -> that day's first meal through this pathway
+  for (const e of events) if (!firstMeal.has(dayKey(e.ts))) firstMeal.set(dayKey(e.ts), e);
+  const finished = (e) => tsMs(e.ts) + windowMs <= nowMs;
+  const followedAfter = (e) => index.between(tsMs(e.ts), tsMs(e.ts) + windowMs).points > 0;
 
-  const ranked = [];
-  const notEnough = [];
-  for (const [tag, exposures] of groups) {
-    const inRange = exposures.filter((x) => x.ms >= fromMs && x.ms <= toMs);
-    if (!inRange.length) continue;
-    const complete = inRange.filter((x) => x.ms + windowMs <= nowMs);
-    let weight = 0, weightedPoints = 0, followed = 0;
-    for (const x of complete) {
-      const { points } = index.between(x.ms, x.ms + windowMs);
-      weight += x.weight;
-      weightedPoints += x.weight * points;
-      if (points > 0) followed++;
-    }
-    const row = {
-      tag, exposures: inRange.length, possible: inRange.filter((x) => x.uncertain).length,
-      watching: inRange.length - complete.length, complete: complete.length, weight, followed,
-      days: dayCount(inRange), completeDays: dayCount(complete),
-    };
-    if (weight < minWeight || row.completeDays < minDays) { notEnough.push(row); continue; }
-    row.meanAfter = weightedPoints / weight;
-    row.ratio = baseline > 0 ? row.meanAfter / baseline : null;
-    row.adjusted = baseline > 0 ? (weightedPoints + PRIOR_STRETCHES * baseline) / ((weight + PRIOR_STRETCHES) * baseline) : null;
-    row.evidence = evidenceOf(row);
-    row.followedLow = wilsonLow(row.followed, row.complete);
-    ranked.push(row);
-  }
-  // Rows with enough to weigh first, by the adjusted multiple; early rows after
-  // them, however high their number.
-  const tier = (r) => (r.evidence === 'early' ? 1 : 0);
-  ranked.sort((a, b) => tier(a) - tier(b) || (b.adjusted ?? -1) - (a.adjusted ?? -1) ||
-    b.followedLow - a.followedLow || b.weight - a.weight || a.tag.localeCompare(b.tag));
-  notEnough.sort((a, b) => b.exposures - a.exposures || a.tag.localeCompare(b.tag));
-  return { ranked, notEnough, baseline, totalPoints, hours, windowHours, who };
-}
-
-// Suspects per pathway, each with its own window: the parent's food through
-// breast milk (windowHours) and the baby's own food (directWindowHours). A tag
-// eaten both ways is scored twice, on purpose; the two scores mean different things.
-export function suspectsByPathway(state, { from, to, now, settings, minWeight = 2 }) {
-  const shared = { from, to, now, minWeight };
-  return {
-    parent: suspects(state, { ...shared, who: 'parent', windowHours: settings.windowHours }),
-    baby: suspects(state, { ...shared, who: 'baby', windowHours: settings.directWindowHours }),
+  const groups = new Map();
+  const add = (key, kind, label, e, possible) => {
+    if (!groups.has(key)) groups.set(key, { key, kind, label, eatings: [] });
+    groups.get(key).eatings.push({ e, possible });
   };
-}
-
-// ---- foods you've typed ------------------------------------------------------
-// Words from meal names and food notes, scored like ad-hoc tags. Symptom notes
-// never enter it. With this many words, some will look guilty by chance, so a
-// word needs TERM_MIN finished exposures on TERM_MIN separate days, and only
-// the top TERM_LIMIT by ratio are shown.
-
-export const TERM_MIN = 3;
-export const TERM_LIMIT = 10;
-
-// Filler that says nothing about what was eaten: grammar, amounts, meal times,
-// and the diary's own words. Checked before and after singularizing.
-export const STOPWORDS = new Set(`
-  a an the and or but nor so yet with w n of on in at to from for by into onto over under out up off
-  about as than then too very also just really only like via per etc amp
-  i me my mine we us our you your he him his she her it its they them their this that these those
-  is are was were be been being am had have has did do does done ate eat eaten eating make made making
-  got get tried try add added ordered order
-  some any few lot bit little more less most much many extra plus half small large big medium regular whole
-  each other another again same one two three
-  breakfast lunch dinner supper brunch snack dessert meal food leftover today tonight yesterday
-  morning afternoon evening night late early
-  cup bowl plate slice piece serving handful glass bottle tbsp tsp oz lb ml spoon spoonful bite side portion
-  possible possibly hidden maybe probably might may contain contained containing trace
-`.split(/\s+/).filter(Boolean));
-
-// The next food word after one of these wasn't eaten ("no cheese"), and nor
-// was the word before "free" ("dairy-free"): in an elimination diary those
-// phrases are everywhere, and counting them would make the food look eaten.
-const NEGATORS = new Set(['no', 'not', 'without', 'sans', 'skip', 'hold']);
-
-const IRREGULAR = {
-  cookies: 'cookie', brownies: 'brownie', smoothies: 'smoothie', veggies: 'veggie', pies: 'pie',
-  loaves: 'loaf', halves: 'half', leaves: 'leaf', molasses: 'molasses',
-};
-
-// Plural to singular, just well enough that "eggs" and "egg" meet.
-export function singular(w) {
-  if (IRREGULAR[w]) return IRREGULAR[w];
-  if (w.length <= 3 || /(ss|us)$/.test(w)) return w;
-  if (/ies$/.test(w) && w.length > 4) return `${w.slice(0, -3)}y`;
-  if (/(oes|sses|ches|shes|xes|zes)$/.test(w)) return w.slice(0, -2);
-  return w.endsWith('s') ? w.slice(0, -1) : w;
-}
-
-// A text's terms: lowercase, no punctuation, singular, no filler; single words
-// plus pairs of neighbors. A pair never spans punctuation or a dropped word,
-// so "chicken parm from Anthony's" gives chicken, parm, anthony, "chicken parm".
-// Meal names repeat all the time, so each distinct text is read once. Callers
-// must treat the returned set as read-only.
-const termCache = new Map();
-export function textTerms(text) {
-  const key = String(text || '');
-  let terms = termCache.get(key);
-  if (!terms) {
-    if (termCache.size >= 5000) termCache.clear();
-    terms = readTerms(key);
-    termCache.set(key, terms);
+  for (const e of events) {
+    const tags = [...new Set(e.tags || [])];
+    for (const t of tags) add(`tag:${t}`, 'tag', t, e, false);
+    for (const t of new Set((e.uncertain || []).filter((t) => !tags.includes(t)))) add(`tag:${t}`, 'tag', t, e, true);
+    if (hasItems(e)) for (const it of resolveItems(state.foodItems, e.items)) add(`food:${it.id}`, 'food', it.label, e, false);
+    else if (normName(e.name || '')) add(`name:${normName(e.name)}`, 'name', String(e.name).trim(), e, false);
   }
-  return terms;
-}
 
-function readTerms(text) {
-  const clean = text.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-    .replace(/['\u2019]s\b/g, '').replace(/['\u2019]/g, '');   // iOS types the curly apostrophe
-  const terms = new Set();
-  for (const phrase of clean.split(/[^a-z0-9\s-]+/)) {
-    const run = [];   // kept words, with null wherever a pair can't cross
-    let negate = false;
-    for (const w of phrase.split(/[\s-]+/)) {
-      if (!w) continue;
-      if (NEGATORS.has(w)) { negate = true; run.push(null); continue; }
-      if (w === 'free') {
-        if (run.length && run[run.length - 1] !== null) run.pop();
-        run.push(null);
-        continue;
-      }
-      const s = singular(w);
-      if (w.length < 2 || /^\d/.test(w) || STOPWORDS.has(w) || STOPWORDS.has(s)) { run.push(null); continue; }
-      if (negate) { negate = false; run.push(null); continue; }
-      run.push(s);
-    }
-    run.forEach((s, i) => {
-      if (s === null) return;
-      terms.add(s);
-      const next = run[i + 1];
-      if (next && next !== s) terms.add(`${s} ${next}`);
+  const rows = [];
+  for (const g of groups.values()) {
+    const dates = g.eatings.map(({ e, possible }) => {
+      const done = finished(e);
+      return { id: e.id, day: dayKey(e.ts), ts: e.ts, name: e.name, possible, pending: !done, followed: done && followedAfter(e) };
     });
+    const done = dates.filter((d) => !d.pending);
+    const eatenDays = new Set(dates.map((d) => d.day));
+    const otherDates = [...firstMeal].filter(([day, e]) => !eatenDays.has(day) && finished(e)).map(([day, e]) => ({ day, followed: followedAfter(e) }));
+    const row = {
+      key: g.key, kind: g.kind, label: g.label, also: [], who, windowHours,
+      eaten: done.length, eatenDays: new Set(done.map((d) => d.day)).size, followed: done.filter((d) => d.followed).length, pending: dates.length - done.length,
+      otherDays: otherDates.length, otherFollowed: otherDates.filter((d) => d.followed).length, dates, otherDates,
+    };
+    row.gap = row.eaten && row.otherDays ? row.followed / row.eaten - row.otherFollowed / row.otherDays : 0;
+    rows.push(row);
   }
-  return terms;
+  // The same eatings under two names are one thing.
+  const order = { tag: 0, food: 1, name: 2 };
+  rows.sort((a, b) => order[a.kind] - order[b.kind] || a.label.localeCompare(b.label));
+  const bySig = new Map();
+  const kept = [];
+  for (const r of rows) {
+    const sig = r.dates.map((d) => d.id).sort().join(',');
+    const same = bySig.get(sig);
+    if (same) same.also.push({ kind: r.kind, label: r.label });
+    else { bySig.set(sig, r); kept.push(r); }
+  }
+  const enough = (r) => r.eaten >= STANDOUT_MIN_EATEN && r.eatenDays >= STANDOUT_MIN_EATEN && r.otherDays >= STANDOUT_MIN_OTHER;
+  const standing = kept.filter((r) => enough(r) && r.gap >= STANDOUT_GAP)
+    .sort((a, b) => b.gap - a.gap || b.followed - a.followed || a.label.localeCompare(b.label))
+    .slice(0, STANDOUT_LIMIT);
+  return { who, windowHours, standing, compared: kept.filter(enough).length, foods: kept.length, rows: kept };
 }
 
-// Every term one food entry was logged with, from its name and its note, each
-// once. A name the app made up from the allergens ("Dairy, soy") wasn't typed,
-// so it doesn't count.
-export function foodTerms(e, settings) {
-  const typedName = e.name && e.name !== autoMealName(settings, e.tags || [], e.uncertain || []);
-  return [...new Set([...textTerms(typedName ? e.name : ''), ...textTerms(e.note)])];
-}
-
-// Typed words scored by the suspects engine for one pathway: same window, same
-// baseline, same ratio as the tags. Rows carry `term` instead of `tag`.
-// Only older entries (no picked foods) are read for words; an entry logged
-// from picked foods is scored by its foods instead, never both.
-export function termSuspects(state, { from, to, windowHours, now, settings, who = null, limit = TERM_LIMIT }) {
-  const groups = exposureGroups(state.foodLog, who, (e) => (hasItems(e) ? [] : foodTerms(e, settings).map((t) => [t, false])));
-  const r = scoreGroups(state, groups, { from, to, windowHours, now, who, minWeight: TERM_MIN, minDays: TERM_MIN });
-  const asTerm = ({ tag, ...row }) => ({ term: tag, ...row });
-  return { ...r, ranked: r.ranked.slice(0, limit).map(asTerm), more: Math.max(0, r.ranked.length - limit), notEnough: r.notEnough.map(asTerm) };
-}
-
-// Individual foods scored like ad-hoc tags, per pathway: same window, same
-// baseline, same ratio, same bar and cap as the words. Merged foods count
-// toward the food they became; hidden ones still count. Rows carry `item`.
-export function itemSuspects(state, { from, to, windowHours, now, who = null, limit = TERM_LIMIT }) {
-  const resolve = itemResolver(state.foodItems);
-  const keys = (e) => (hasItems(e) ? [...new Set(e.items.map((id) => resolve(id)?.id).filter(Boolean))].map((id) => [id, false]) : []);
-  const r = scoreGroups(state, exposureGroups(state.foodLog, who, keys), { from, to, windowHours, now, who, minWeight: TERM_MIN, minDays: TERM_MIN });
-  const asItem = ({ tag, ...row }) => ({ item: tag, ...row });
-  return { ...r, ranked: r.ranked.slice(0, limit).map(asItem), more: Math.max(0, r.ranked.length - limit), notEnough: r.notEnough.map(asItem) };
-}
-
-export function itemSuspectsByPathway(state, { from, to, now, settings }) {
-  const shared = { from, to, now };
-  return {
-    parent: itemSuspects(state, { ...shared, who: 'parent', windowHours: settings.windowHours }),
-    baby: itemSuspects(state, { ...shared, who: 'baby', windowHours: settings.directWindowHours }),
-  };
-}
-
-export function termSuspectsByPathway(state, { from, to, now, settings }) {
-  const shared = { from, to, now, settings };
-  return {
-    parent: termSuspects(state, { ...shared, who: 'parent', windowHours: settings.windowHours }),
-    baby: termSuspects(state, { ...shared, who: 'baby', windowHours: settings.directWindowHours }),
-  };
-}
+// A window in plain words for a sentence: "24 hours", "4 hours", "5 days".
+export const windowWords = (h) => (h <= 72 ? `${h} hours` : `${h / 24} days`);
 
 // ---- trends and report -------------------------------------------------------
 
@@ -1214,8 +1069,8 @@ export function freshState() {
     onboarded: false,
     babyName: '',
     settings: {
-      windowHours: 24,        // suspects window after the parent eats a food (through breast milk)
-      directWindowHours: 4,   // suspects window after the baby eats a food directly
+      windowHours: 24,        // symptoms window after the parent eats a food (through breast milk)
+      directWindowHours: 4,   // symptoms window after the baby eats a food directly
       customTags: [],   // [{ id, label }], id slugified from label
       hiddenTags: [],   // tag ids hidden from pickers, never deleted
     },

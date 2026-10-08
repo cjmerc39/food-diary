@@ -35,8 +35,8 @@ own files so it works offline; the diary itself lives only in localStorage.
   entry's time can be backdated.
 - **Symptoms:** crying, spit-up, stool, gas, skin, breathing, and other. Gas
   (bloating, straining, painful wind) has its own 1 to 3 anchors; it counts
-  toward suspects like any symptom but stays out of the 0 to 20 load, which
-  keeps its five clinical categories. A stool entry can stand for several
+  as a symptom following a food like any other, but stays out of the 0 to 20
+  load, which keeps its five clinical categories. A stool entry can stand for several
   alike diapers (a count, default one), and the glance card and daily numbers
   show the day's stools. A stool can also carry an optional color, picked from
   a color card laid out the way the infant stool colour cards used in newborn
@@ -66,37 +66,36 @@ own files so it works offline; the diary itself lives only in localStorage.
   at the top, defaulting to the parent and naming the baby; the meal library
   and foods are shared. Baby entries carry a small name pill on Today. Exposure banners
   and the reintroduction watch fire for both pathways and say who ate the food.
-- **Trends:** daily symptom load with one track per phase food behind the
-  line, per-category strips, and the suspects list, scored per pathway once
-  the baby has eaten anything: food reaching the baby through breast milk uses
-  the suspects window (default 24h; 6h to 7 days, since some reactions, skin
-  especially, take longer than three days), the baby's own food a faster one
-  (default 4h, options 1/2/4/8, both editable inline and in More). A window of
-  four days or more shows a note: consecutive windows overlap so much that a
-  food eaten most days holds nearly every symptom, so everything drifts toward
-  1x; good for slow reactions, weak at telling foods apart. The same food can
-  appear under both with different scores. Each row reads in plain words: how
-  much there is to go on (one, two, or three dots with Early, Taking shape, or
-  Well established), how often symptoms followed, and the multiple of usual.
-  The multiple is a Bayesian average, not a plain one: every food starts at 1x
-  as if three typical stretches had been logged for it, and each exposure
-  moves it, so two exposures can't look extreme in either direction (build
-  18). Early rows, fewer than 3 finished exposures on 3 separate days, sit
-  below the rest under their own note and are never ranked among them. The
-  plain ratio is still computed (`ratio`) but not shown. Below the allergens, **Individual
-  foods** scores each picked food the same way (same windows, baseline, and
-  ratio), per pathway. A food needs 3 exposures on 3 separate days, only the
-  top 10 show, and it is labeled exploratory. Older entries, from before
-  foods were picked, are read word by word (lowercased, punctuation and filler
-  words dropped, plurals folded, single words and neighbor pairs; "dairy-free"
-  or "no cheese" doesn't count as eaten) and shown as their own group, so no
-  entry counts twice. Notes, food or symptom, never count as food.
-  Correlation, not diagnosis.
+- **Trends:** the symptom load chart with one track per phase food behind
+  the line, the per-category strips, and then three answers in plain counts,
+  in this order. **Is it working**: one sentence per elimination comparing
+  the two weeks before it started with the time since (average daily load,
+  and days with any symptom); a phase too young, or one that began before the
+  diary did, says so in one line instead. **Anything standing out**: at most
+  three foods per pathway, each one sentence: how many times it was eaten, how
+  many were followed by symptoms within the window, and the same for the days
+  it wasn't eaten (measured from that day's first meal). Allergen tags and
+  picked foods are one list; tapping a row shows the dates behind every
+  count. If nothing separates from the rest, one line says so. **For the next
+  visit**: the same findings as lines to read aloud to the pediatrician; the
+  report carries the identical lines. No multiples, ratios, scores, or
+  confidence labels anywhere, and no advice on what to eliminate or
+  reintroduce next. The two pathways (what she ate, through breast milk; what
+  the baby ate, once he has eaten anything) are described in plain words. The
+  windows that decide what "followed" means live in More: 24h by default via
+  breast milk (6h to 7 days), 4h for his own food (1/2/4/8). A window of four
+  days or more shows a note there: a food eaten most days is then followed by
+  nearly every symptom, so little will stand out. The ordering behind
+  "standing out" lives in `logic.js` (`standingOut`): a food needs 3 days
+  eaten and 3 days without, and its share of eatings followed by symptoms has
+  to beat the share on days without it by a quarter. Older entries from
+  before foods were picked fold in by name.
 - **Phases:** eliminations and reintroductions. They drive the exposure
   banners on Today and the 72-hour reintroduction watch card.
 - **More > Report:** a print-styled summary for the pediatrician, with a Who
-  column in the log (stool counts and colors included), both suspect
-  pathways, and individual foods with their exploratory caveat. Print (it
+  column in the log (stool counts and colors included) and the same three
+  answers as Trends: is it working, anything standing out (with the dates),
+  and for the next visit. Print (it
   works from the Home Screen app), save a PDF from the print preview, or
   **Share as a file** for a printable copy in Files, Mail, or AirDrop.
 - **More > Back up now:** saves the whole diary as a JSON file through the
@@ -128,7 +127,7 @@ own files so it works offline; the diary itself lives only in localStorage.
 | File | What it is |
 | --- | --- |
 | `index.html` | The whole app: markup, styles, UI code |
-| `logic.js` | Pure computation shared by the browser and the tests: time and day math, phases, meals, foods and tags, symptom load and stool counts, suspects (allergen tags, individual foods, and older entries' words), the v1 to v2 migration, trends ranges, backups (reading, checking, merging, including symptom sets), the backup reminder, and which mark a quiet day shows |
+| `logic.js` | Pure computation shared by the browser and the tests: time and day math, phases, meals, foods and tags, symptom load and stool counts, the three Trends answers (elimination outcomes and foods standing out), the v1 to v2 migration, trends ranges, backups (reading, checking, merging, including symptom sets), the backup reminder, and which mark a quiet day shows |
 | `logic.test.js` | Tests for `logic.js` |
 | `sw.js` | Cache-first service worker for the app shell |
 | `manifest.json` | PWA manifest |
