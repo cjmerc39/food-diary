@@ -97,15 +97,20 @@ own files so it works offline; the diary itself lives only in localStorage.
   (the stretches cover nearly everything); foods only eaten from a point on,
   with the days to compare against all before it; and how many foods have
   not been eaten on 3 separate days yet. Every food is in exactly one of the
-  four groups. A food is listed only
-  when, for every time it was eaten, its three days were heavier than the
-  other days, and by 1.5 or more on average overall (the score's smallest
-  step is 1, so 1.5 asks for more than any single one-step change); at most
-  three per pathway, each one sentence, with its days (and each day's score) a tap
-  away. Names eaten on exactly the same days (a tag and its food, or two
-  foods always eaten together) are one row naming both. The rule is fixed,
-  not tuned to make rows appear: on most diaries nothing stands out, and
-  that is written as a real answer. **New foods**: foods eaten for the first
+  four groups. The three compared foods furthest apart are always shown,
+  ranked by gap, each one sentence with its days (and each day's score) a
+  tap away, so there is always a candidate to test next. Each row carries
+  its verdict: it clears the bar when, for every time it was eaten, its three
+  days were higher than the other days, and by 1.5 or more on average
+  overall (the score's smallest step is 1, so 1.5 asks for more than any
+  single one-step change); otherwise the row says why not, naming the
+  eatings whose three days were no higher. When none clears, a line above
+  says nothing is clearly separating yet, and one line under the list says
+  that with a dozen or more foods compared the top one will usually sit
+  somewhat above the rest even when nothing is wrong. The bar is fixed, not
+  tuned. Names eaten on exactly the same days (a tag and its food, or two
+  foods always eaten together) are one row naming both. The section is
+  empty only when no food can be compared at all. **New foods**: foods eaten for the first
   time in range, each with the gut score of that day and the two after against
   the other days; one occasion each, never ranked, never fed into the
   standing-out list. **For the next visit**: where things stand plus the

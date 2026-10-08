@@ -496,6 +496,12 @@ details[open].standout > summary::after{content:"Hide the dates"}
 .dates{margin-top:8px;color:var(--ink2);font-size:15px;line-height:1.45}
 .dates p + p{margin-top:4px}
 .dates .chip{min-height:44px;margin-top:10px;padding:0 16px;font-size:15px}
+.verdict{display:block;margin-top:6px;color:var(--ink2);font-size:14px;line-height:1.4}
+.verdict.clear{color:var(--sym-ink);font-weight:600}
+details.standout.clear{box-shadow:inset 3px 0 0 var(--sym)}
+.standout-lead{margin-top:6px}
+.standout-note{margin-top:10px}
+.report .standout-row em{display:block;font-style:normal;color:#555;font-size:14px}
 .standout-none,.newfood-none{margin-top:6px}
 details.aside{margin-top:10px}
 details.aside > summary{list-style:none;cursor:pointer;display:flex;align-items:flex-start;gap:12px;min-height:44px;color:var(--ink2);font-size:15px;line-height:1.45}
@@ -717,7 +723,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 25;
+const BUILD = 26;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -1460,7 +1466,8 @@ const rangeWords = (range) => (range === 'all' ? 'everything logged' : `the last
 const safeFoods = () => liveFoods().filter((it) => it.safe).sort(byLabel);
 const safeTags = () => (S.settings.safeTags || []).map((t) => ({ id: t, label: tagLabel(S.settings, t) })).sort(byLabel);
 const CAUSE_NOTE = 'A higher gut score around a food is not the same as the food causing it.';
-const STANDOUT_RULE = `A food is listed only when, for every time it was eaten, that day and the two after had a higher gut score than the other days, and by ${STANDOUT_GAP} or more on average.`;
+const STANDOUT_RULE = `The three furthest apart are always shown. One clears the bar when, for every time it was eaten, that day and the two after had a higher gut score than the other days, and by ${STANDOUT_GAP} or more on average.`;
+const TOP_NOTE = 'Even when nothing is wrong, with a dozen or more foods compared the top one will usually sit somewhat above the rest.';
 // A row's name: the food, or every name eaten on exactly the same days.
 const joinNames = (names) => (names.length <= 2 ? names.join(' and ') : `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`);
 function rowNames(r) { return [standLabel(r), ...r.also.map(standLabel)]; }
@@ -1501,8 +1508,17 @@ function standoutDatesText(r) {
 }
 function standoutEmpty(r, rangeName) {
   if (!r.enough) return `Not enough days logged yet to compare foods over ${rangeName}.`;
-  if (!r.compared) return `No food could be compared over ${rangeName} yet.`;
-  return `No food stands out over ${rangeName}. No food's days had a clearly higher gut score than the other days.`;
+  return `No food could be compared over ${rangeName} yet.`;
+}
+// Above the list when nothing clears the bar: the candidates are still shown.
+const leadText = (r) => `Nothing is clearly separating yet. ${r.top.length === 1 ? 'This is the one food that could be compared.' : `These ${r.top.length === 2 ? 'two' : 'three'} are currently furthest apart.`}`;
+// The row's verdict: clears the bar, or the honest reason it does not.
+function verdictText(r) {
+  if (r.clears) return `Clears the bar: higher every time, and by ${STANDOUT_GAP} or more.`;
+  const reasons = [];
+  if (r.gap < STANDOUT_GAP) reasons.push(`the gap is under ${STANDOUT_GAP}`);
+  if (r.misses.length) reasons.push(`on ${joinNames(r.misses.map(dayShort))} its three days were no higher than the other days`);
+  return `Not a clear finding: ${reasons.join(', and ')}.`;
 }
 // The foods that could not be compared, as two lines with the names a tap away:
 // eaten too often or too evenly (the shadow covers nearly everything), and
@@ -1525,9 +1541,12 @@ const eatenItem = (x) => `${rowName(x)}: eaten on ${dayWord(x.eatenDays)}`;
 const asideHtml = (cls, text, rows, item = eatenItem) => `<details class="aside ${cls}"><summary>${esc(text)}</summary>
     <ul class="plain aside-list">${rows.map((x) => `<li>${esc(item(x))}</li>`).join('')}</ul></details>`;
 function standoutHtml(r, rangeName) {
-  const rows = r.standing.length ? r.standing.map((row) => `<details class="standout" data-key="${esc(row.key)}"><summary>${esc(standoutText(row))}</summary>
+  const rows = r.top.length
+    ? (r.top.some((row) => row.clears) ? '' : `<p class="hint standout-lead">${esc(leadText(r))}</p>`)
+      + r.top.map((row) => `<details class="standout${row.clears ? ' clear' : ''}" data-key="${esc(row.key)}"><summary>${esc(standoutText(row))}<span class="verdict${row.clears ? ' clear' : ''}">${esc(verdictText(row))}</span></summary>
     <div class="dates">${standoutDatesText(row).map((t) => `<p>${esc(t)}</p>`).join('')}${row.kind === 'name' ? ''
       : `<button class="chip" data-act="mark-safe" data-keys="${esc(safeKeys(row).join(' '))}">Mark ${esc(rowName(row))} safe</button>`}</div></details>`).join('')
+      + `<p class="fine standout-note">${esc(TOP_NOTE)}</p>`
     : `<p class="hint standout-none">${esc(standoutEmpty(r, rangeName))}</p>`;
   return rows + (r.everyday.length ? asideHtml('everyday', everydayText(r), r.everyday) : '')
     + (r.adopted.length ? asideHtml('adopted', adoptedText(r), r.adopted, adoptedItem) : '')
@@ -1571,7 +1590,10 @@ function visitLines(st, stands, range, rangeName) {
   const lines = statusLines(st, range);
   const found = stands.flatMap((r) => r.standing.map((row) =>
     `${rowName(row)}${r.who === 'baby' ? ` (${babyLabel()}'s own food)` : ''}: its days averaged a gut score of ${oneDp(row.avgAfter)}, the other days ${oneDp(row.avgNot)}`));
-  lines.push(found.length ? `Standing out over ${rangeName}: ${found.join('; ')}.` : standoutEmpty(stands[0], rangeName));
+  const first = stands.find((r) => r.top.length);
+  lines.push(found.length ? `Standing out over ${rangeName}: ${found.join('; ')}.`
+    : first ? `Nothing is clearly separating yet over ${rangeName}. Furthest apart: ${rowName(first.top[0])}, its days averaged a gut score of ${oneDp(first.top[0].avgAfter)}, the other days ${oneDp(first.top[0].avgNot)}.`
+      : standoutEmpty(stands[0], rangeName));
   return lines;
 }
 
@@ -2097,8 +2119,10 @@ function reportHtml() {
     <section class="keep">
       <h2>Anything standing out</h2>
       <p class="report-meta">Each food's days against the other days, over this range, from when symptom tracking began: the gut score of the day it was eaten and the two after, on average, and of the days outside those. ${STANDOUT_RULE} ${CAUSE_NOTE}</p>
-      ${stands.map((r) => `${stands.length > 1 ? `<h3>${esc(PATHWAY_WORDS[r.who]())}</h3>` : ''}${r.standing.length
-        ? r.standing.map((row) => `<p class="standout-row">${esc(standoutText(row))}</p><p class="report-meta">${esc(standoutDatesText(row).join(' '))}</p>`).join('')
+      ${stands.map((r) => `${stands.length > 1 ? `<h3>${esc(PATHWAY_WORDS[r.who]())}</h3>` : ''}${r.top.length
+        ? (r.top.some((row) => row.clears) ? '' : `<p class="report-meta">${esc(leadText(r))}</p>`)
+          + r.top.map((row) => `<p class="standout-row${row.clears ? ' clear' : ''}">${esc(standoutText(row))} <em>${esc(verdictText(row))}</em></p><p class="report-meta">${esc(standoutDatesText(row).join(' '))}</p>`).join('')
+          + `<p class="report-meta">${esc(TOP_NOTE)}</p>`
         : `<p class="report-meta">${esc(standoutEmpty(r, rangeName))}</p>`}${r.everyday.length ? `<p class="report-meta">${esc(everydayText(r, true))}</p>` : ''}${r.adopted.length ? `<p class="report-meta">${esc(`Only eaten from a point on, so the days to compare against come from before it: ${r.adopted.map((x) => `${rowName(x)} (since ${dayShort(x.firstDay)})`).join(', ')}.`)}</p>` : ''}${r.few.length ? `<p class="report-meta">${esc(fewText(r))}</p>` : ''}`).join('')}
       ${safeFoods().length || safeTags().length ? `<p class="report-meta">Marked safe by the parent and left out: ${esc([...safeTags(), ...safeFoods()].map((x) => x.label).join(', '))}.</p>` : ''}
     </section>
