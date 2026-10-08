@@ -73,18 +73,24 @@ own files so it works offline; the diary itself lives only in localStorage.
   how many days have entries and on how many of them a symptom was logged. No
   averages, no before-and-after; eliminations are standing constraints, not
   experiments the app grades. **Anything standing out**: each food's days
-  against the days without it, by daily symptom load, counted only from the
+  against the other days, by daily symptom load, counted only from the
   first symptom entry on (`trackingStart`): days before symptom tracking
   began hold food but say nothing about symptoms, and days with nothing
-  logged count for neither side. A food needs 2 days eaten and 5 days
-  without it; one eaten most days has too few days without it and is named
-  under one line as eaten too often to compare against anything. A food is
-  listed only when every day it was eaten was heavier than the days without
-  it, by 2 load points or more on average; at most three per pathway, each
-  one sentence, with its days (and each day's load) a tap away. The rule is
-  fixed, not tuned to make rows appear: on most diaries nothing stands out,
-  and that is written as a real answer. **New foods**: foods eaten for the
-  first time in range, each with the load of that day and the next against
+  logged count for neither side. Food proteins reach the milk within hours,
+  but the reactions looked for (mucus, loose stools, gas, eczema) arrive
+  hours to days later, so each eating counts as three days: the day it was
+  eaten and the two after, a day counted once however many overlap. A food
+  needs 3 days eaten and 5 tracked days outside those three-day stretches;
+  one eaten most days covers nearly everything and is named under one line
+  as eaten too often to compare against anything. A food is listed only
+  when, for every time it was eaten, its three days were heavier than the
+  other days, and by 2 load points or more on average overall; at most three
+  per pathway, each one sentence, with its days (and each day's load) a tap
+  away. Names eaten on exactly the same days (a tag and its food, or two
+  foods always eaten together) are one row naming both. The rule is fixed,
+  not tuned to make rows appear: on most diaries nothing stands out, and
+  that is written as a real answer. **New foods**: foods eaten for the first
+  time in range, each with the load of that day and the two after against
   the other days; one occasion each, never ranked, never fed into the
   standing-out list. **For the next visit**: where things stand plus the
   standing-out answer, as lines to read aloud to the pediatrician; the report

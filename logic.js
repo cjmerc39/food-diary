@@ -672,24 +672,44 @@ export function statusNow(state, { fromDay, today }) {
 
 // ---- anything standing out ------------------------------------------------------------
 // Every food through one pathway (an allergen tag, a picked food, or an older
-// entry's name, all just foods here) by the days it was eaten against the days
-// it was not, from when symptom tracking began: the symptom load of a day it
-// was eaten, on average, against the load of a day it was not. Both sides are
-// days with entries. A food needs STANDOUT_MIN_EATEN days eaten and
-// STANDOUT_MIN_NOT days without it; one eaten most days has too few days
-// without it to compare against anything, and is listed as such instead. Foods
-// and tags she marked safe are left out. A food stands out when every day it
-// was eaten was heavier than the average day without it, and by STANDOUT_GAP
-// load points or more on average, so one rough day can't carry a food on its
-// own. The rule is fixed, not tuned to make rows appear: on most diaries the
-// answer is that nothing stands out, and that is a real answer. A tag and a
-// food eaten on exactly the same days are one row, named for the tag.
-//   row: { key, kind, label, id?, also, who, eatenDays, notDays, avgEaten, avgNot, gap, heavier,
-//          dates: [{ day, load, possible }] }
-export const STANDOUT_MIN_EATEN = 2;
+// entry's name, all just foods here) by the days after it was eaten against
+// the other days, from when symptom tracking began. Food proteins reach the
+// milk within hours and clear within a day, but the reactions looked for here
+// (mucus, loose stools, gas, eczema) arrive hours to days later, so each
+// eating casts a shadow of SHADOW_DAYS days: the day it was eaten and the two
+// after. The shadow days' symptom load, on average, against the load of the
+// tracked days outside every shadow; a day counts once however many shadows
+// overlap it, and both sides are days with entries. A food needs
+// STANDOUT_MIN_EATEN days eaten and STANDOUT_MIN_NOT tracked days outside its
+// shadow; a food eaten most days shadows nearly everything, has too few days
+// outside to compare against, and is listed as such instead. Foods and tags
+// she marked safe are left out. A food stands out when, for every time it was
+// eaten, its own three days were heavier than the average day outside, and the
+// shadow as a whole is heavier by STANDOUT_GAP load points or more, so one
+// rough stretch can't carry a food on its own. The rule is fixed, not tuned to
+// make rows appear: on most diaries nothing stands out, and that is a real
+// answer. Two names with exactly the same eaten days (a tag and its food, or
+// two foods always eaten together) are one row naming both.
+//   row: { key, kind, label, id?, also: [{ kind, label, id? }], who, eatenDays, afterDays, notDays,
+//          avgAfter, avgNot, gap, heavier, dates: [{ day, load, possible }], after: [{ day, load, eaten }] }
+export const SHADOW_DAYS = 3;
+export const STANDOUT_MIN_EATEN = 3;
 export const STANDOUT_MIN_NOT = 5;
 export const STANDOUT_GAP = 2;       // load points between the two averages
 export const STANDOUT_LIMIT = 3;
+
+// The tracked days a food eaten on `eatenDays` casts its shadow over, each once.
+function shadowOf(eatenDays, days) {
+  const shadow = new Map();
+  for (const d of eatenDays) {
+    for (let k = 0; k < SHADOW_DAYS; k++) {
+      const dd = addDays(d, k);
+      if (days.has(dd) && !shadow.has(dd)) shadow.set(dd, { day: dd, load: days.get(dd), eaten: false });
+    }
+  }
+  for (const d of eatenDays) if (shadow.has(d)) shadow.get(d).eaten = true;
+  return [...shadow.values()].sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
+}
 
 const safeTagsOf = (state) => new Set((state.settings && state.settings.safeTags) || []);
 
@@ -729,13 +749,18 @@ export function standingOut(state, { fromDay, today, who }) {
   }
   const rows = [];
   for (const g of groups.values()) {
-    const dates = [...g.days.keys()].sort().map((day) => ({ day, load: days.get(day) || 0, possible: g.days.get(day) }));
-    const notLoads = [...days].filter(([day]) => !g.days.has(day)).map(([, load]) => load);
-    const avgEaten = avg(dates.map((d) => d.load)), avgNot = avg(notLoads);
+    const eaten = [...g.days.keys()].sort();
+    const dates = eaten.map((day) => ({ day, load: days.get(day) || 0, possible: g.days.get(day) }));
+    const after = shadowOf(eaten, days);
+    const shadowed = new Set(after.map((d) => d.day));
+    const notLoads = [...days].filter(([day]) => !shadowed.has(day)).map(([, load]) => load);
+    const avgAfter = avg(after.map((d) => d.load)), avgNot = avg(notLoads);
+    // Each eating on its own: its day and the two after, against the days outside.
+    const heavier = eaten.filter((d) => avg(shadowOf([d], days).map((x) => x.load)) > avgNot).length;
     rows.push({
       key: g.key, kind: g.kind, label: g.label, id: g.id, also: [], who,
-      eatenDays: dates.length, notDays: notLoads.length, avgEaten, avgNot, gap: avgEaten - avgNot,
-      heavier: dates.filter((d) => d.load > avgNot).length, dates,
+      eatenDays: dates.length, afterDays: after.length, notDays: notLoads.length, avgAfter, avgNot, gap: avgAfter - avgNot,
+      heavier, dates, after,
     });
   }
   // The same days under two names are one thing.
@@ -759,10 +784,11 @@ export function standingOut(state, { fromDay, today, who }) {
 
 // ---- new foods -------------------------------------------------------------------
 // Foods eaten for the first time in range, from when symptom tracking began,
-// each with the symptom load of that day and the next against the other days
-// in range. An observation about one occasion: never ranked, never part of
-// what stands out. Safe foods are left out here too; tags are not foods here.
-//   { key, kind, label, id?, day, load, next: { day, load (null when nothing was logged), pending }, otherDays, others }
+// each with the symptom load of that day and the two after (the same shadow
+// as above) against the other days in range. An observation about one
+// occasion: never ranked, never part of what stands out. Safe foods are left
+// out here too; tags are not foods here.
+//   { key, kind, label, id?, day, load, next: [{ day, load (null when nothing was logged), pending }], otherDays, others }
 export function newFoods(state, { fromDay, today, who }) {
   const start = trackingStart(state);
   const from = start && start > fromDay ? start : fromDay;
@@ -779,13 +805,14 @@ export function newFoods(state, { fromDay, today, who }) {
   const out = [];
   for (const f of firstDay.values()) {
     if (f.day < from || f.day > today) continue;
-    const next = addDays(f.day, 1);
-    const others = [...days].filter(([d]) => d !== f.day && d !== next).map(([, load]) => load);
-    out.push({
-      ...f, load: days.get(f.day) || 0,
-      next: { day: next, load: days.has(next) ? days.get(next) : null, pending: next >= today },
-      otherDays: others.length, others: avg(others),
-    });
+    const next = [];
+    for (let k = 1; k < SHADOW_DAYS; k++) {
+      const d = addDays(f.day, k);
+      next.push({ day: d, load: days.has(d) ? days.get(d) : null, pending: d >= today });
+    }
+    const span = new Set([f.day, ...next.map((n) => n.day)]);
+    const others = [...days].filter(([d]) => !span.has(d)).map(([, load]) => load);
+    out.push({ ...f, load: days.get(f.day) || 0, next, otherDays: others.length, others: avg(others) });
   }
   return out.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : a.label.localeCompare(b.label)));
 }

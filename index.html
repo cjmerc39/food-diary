@@ -691,7 +691,7 @@ import {
   allTags, tagLabel, tagState, cycleTag, sortPhases, isPhaseActive, phaseDay, phasesToClose,
   rankMeals, searchMeals, findMealByName, autoMealName,
   hasItems, itemResolver, resolveItems, itemTags, mealTags, findItemByLabel, pickableItems, mergeItem,
-  statusNow, standingOut, newFoods, trackingStart, STANDOUT_GAP,
+  statusNow, standingOut, newFoods, trackingStart, STANDOUT_GAP, STANDOUT_MIN_EATEN,
   foodsToReview, foodReviewCard,
   symptomMissing, symptomFields, dayEntries, exposureBanners, pruneDismissed, reintroWatches,
   standaloneHeight, TREND_RANGES, daysBetween, slugify,
@@ -707,7 +707,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 21;
+const BUILD = 22;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -1418,7 +1418,14 @@ const rangeWords = (range) => (range === 'all' ? 'everything logged' : `the last
 const safeFoods = () => liveFoods().filter((it) => it.safe).sort(byLabel);
 const safeTags = () => (S.settings.safeTags || []).map((t) => ({ id: t, label: tagLabel(S.settings, t) })).sort(byLabel);
 const CAUSE_NOTE = 'Heavier days with a food are not the same as the food causing them.';
-const STANDOUT_RULE = `A food is listed only when every day it was eaten was heavier than the days without it, by ${STANDOUT_GAP} points or more on average.`;
+const STANDOUT_RULE = `A food is listed only when, for every time it was eaten, that day and the two after were heavier than the other days, by ${STANDOUT_GAP} points or more on average.`;
+// A row's name: the food, or every name eaten on exactly the same days.
+const joinNames = (names) => (names.length <= 2 ? names.join(' and ') : `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`);
+function rowNames(r) { return [standLabel(r), ...r.also.map(standLabel)]; }
+function rowName(r) {
+  const names = rowNames(r);
+  return names.length <= 3 ? joinNames(names) : `${names.slice(0, 2).join(', ')}, and ${names.length - 2} more`;
+}
 
 // Where things stand: what is out and since when, then the range in her own terms.
 function statusLines(st, range) {
@@ -1439,22 +1446,27 @@ const statusList = (lines) => `<ul class="answers">${lines.map((l) => `<li>${esc
 
 // Anything standing out: a sentence per food, its days a tap away.
 function standoutText(r) {
-  return `${standLabel(r)}: eaten on ${dayWord(r.eatenDays)}. Symptom load on those days averaged ${oneDp(r.avgEaten)}. On the ${dayWord(r.notDays)} without it, ${oneDp(r.avgNot)}.`;
+  return `${rowName(r)}: eaten on ${dayWord(r.eatenDays)}. Those days and the two after each add up to ${dayWord(r.afterDays)}, with symptom load averaging ${oneDp(r.avgAfter)}. On the other ${dayWord(r.notDays)}, ${oneDp(r.avgNot)}.`;
 }
 const dayAndLoad = (d) => `${dayShort(d.day)} (load ${d.load}${d.possible ? ', possibly hidden' : ''})`;
 function standoutDatesText(r) {
-  return [`Days eaten: ${r.dates.map(dayAndLoad).join(', ')}.`, ...(r.also.length ? [`Also counted as ${r.also.map(standLabel).join(', ')}.`] : [])];
+  const shadowOnly = r.after.filter((d) => !d.eaten);
+  return [
+    `Days eaten: ${r.dates.map(dayAndLoad).join(', ')}.`,
+    ...(shadowOnly.length ? [`Counted with them, as the two days after: ${shadowOnly.map(dayAndLoad).join(', ')}.`] : []),
+    ...(r.also.length > 2 ? [`All of them: ${joinNames(rowNames(r))}.`] : []),
+  ];
 }
 function standoutEmpty(r, rangeName) {
   if (!r.enough) return `Not enough days logged yet to compare foods over ${rangeName}.`;
-  if (!r.compared) return `No food could be compared over ${rangeName}. Each was eaten most days, or on only one.`;
-  return `No food stands out over ${rangeName}. No food's days were clearly heavier than the days without it.`;
+  if (!r.compared) return `No food could be compared over ${rangeName}. Each was eaten too often, or on fewer than ${STANDOUT_MIN_EATEN} days.`;
+  return `No food stands out over ${rangeName}. No food's days were clearly heavier than the other days.`;
 }
-const everydayText = (r) => `Eaten too often to compare against anything: ${r.everyday.map(standLabel).join(', ')}.`;
+const everydayText = (r) => `Eaten too often to compare against anything: ${r.everyday.map(rowName).join('; ')}.`;
 function standoutHtml(r, rangeName) {
   const rows = r.standing.length ? r.standing.map((row) => `<details class="standout" data-key="${esc(row.key)}"><summary>${esc(standoutText(row))}</summary>
     <div class="dates">${standoutDatesText(row).map((t) => `<p>${esc(t)}</p>`).join('')}${row.kind === 'name' ? ''
-      : `<button class="chip" data-act="mark-safe" data-keys="${esc(safeKeys(row).join(' '))}">Mark ${esc(standLabel(row))} safe</button>`}</div></details>`).join('')
+      : `<button class="chip" data-act="mark-safe" data-keys="${esc(safeKeys(row).join(' '))}">Mark ${esc(rowName(row))} safe</button>`}</div></details>`).join('')
     : `<p class="hint standout-none">${esc(standoutEmpty(r, rangeName))}</p>`;
   return rows + (r.everyday.length ? `<p class="everyday">${esc(everydayText(r))}</p>` : '');
 }
@@ -1468,11 +1480,20 @@ function safeLineHtml() {
 
 // New foods: one occasion each, described and never ranked.
 const NEW_SHOWN = 6;
+const WHEN = ['the next day', 'the day after'];
 function newFoodText(n, rangeName) {
-  const then = n.next.pending ? `Symptom load was ${n.load} that day. The next day is not over yet.`
-    : n.next.load === null ? `Symptom load was ${n.load} that day. Nothing was logged the next day.`
-      : `Symptom load was ${n.load} that day and ${n.next.load} the next.`;
-  return `${n.label}: first eaten on ${dayShort(n.day)}. ${then}${n.otherDays ? ` Other days over ${rangeName} averaged ${oneDp(n.others)}.` : ''}`;
+  const known = [`${n.load} that day`], missing = [];
+  let pending = '';
+  n.next.forEach((d, i) => {
+    if (d.pending) { if (!pending) pending = i === 0 ? 'The next two days are not over yet.' : 'The day after is not over yet.'; }
+    else if (d.load === null) missing.push(WHEN[i]);
+    else known.push(`${d.load} ${WHEN[i]}`);
+  });
+  const parts = [`Symptom load was ${joinNames(known)}.`];
+  if (missing.length) parts.push(`Nothing was logged ${missing.join(' or ')}.`);
+  if (pending) parts.push(pending);
+  if (n.otherDays) parts.push(`Other days over ${rangeName} averaged ${oneDp(n.others)}.`);
+  return `${n.label}: first eaten on ${dayShort(n.day)}. ${parts.join(' ')}`;
 }
 function newFoodsHtml(list, rangeName) {
   if (!trackingStart(S)) return '<p class="hint newfood-none">No symptoms logged yet.</p>';
@@ -1486,7 +1507,7 @@ function newFoodsHtml(list, rangeName) {
 function visitLines(st, stands, range, rangeName) {
   const lines = statusLines(st, range);
   const found = stands.flatMap((r) => r.standing.map((row) =>
-    `${standLabel(row)}${r.who === 'baby' ? ` (${babyLabel()}'s own food)` : ''}: days eaten averaged ${oneDp(row.avgEaten)}, days without ${oneDp(row.avgNot)}`));
+    `${rowName(row)}${r.who === 'baby' ? ` (${babyLabel()}'s own food)` : ''}: the days after it averaged ${oneDp(row.avgAfter)}, the other days ${oneDp(row.avgNot)}`));
   lines.push(found.length ? `Standing out over ${rangeName}: ${found.join('; ')}.` : standoutEmpty(stands[0], rangeName));
   return lines;
 }
@@ -1514,13 +1535,13 @@ function answersHtml(fromDay) {
     </section>
     <section class="card answer" data-answer="standing">
       <h2 class="chart-title">Anything standing out</h2>
-      <p class="fine">Each food's days against the days without it, over ${esc(rangeName)}: the symptom load of a day it was eaten, on average, and of a day it was not. ${STANDOUT_RULE} Tap a food for its days. ${CAUSE_NOTE}</p>
+      <p class="fine">Each food's days against the other days, over ${esc(rangeName)}: the symptom load of the day it was eaten and the two after, on average, and of the days outside those. ${STANDOUT_RULE} Tap a food for its days. ${CAUSE_NOTE}</p>
       ${stands.map((r) => pathway(r, standoutHtml(r, rangeName))).join('')}
       ${safeLineHtml()}
     </section>
     <section class="card answer" data-answer="new">
       <h2 class="chart-title">New foods</h2>
-      <p class="fine">Foods eaten for the first time over ${esc(rangeName)}, and how that day and the next went. One occasion each, so nothing is ranked here.</p>
+      <p class="fine">Foods eaten for the first time over ${esc(rangeName)}, and how that day and the two after went. One occasion each, so nothing is ranked here.</p>
       ${fresh.map((r) => pathway(r, newFoodsHtml(r.list, rangeName))).join('')}
     </section>
     <section class="card answer" data-answer="visit">
@@ -2012,7 +2033,7 @@ function reportHtml() {
     </section>
     <section class="keep">
       <h2>Anything standing out</h2>
-      <p class="report-meta">Each food's days against the days without it, over this range, from when symptom tracking began: the daily symptom load of a day it was eaten, on average, and of a day it was not. ${STANDOUT_RULE} ${CAUSE_NOTE}</p>
+      <p class="report-meta">Each food's days against the other days, over this range, from when symptom tracking began: the daily symptom load of the day it was eaten and the two after, on average, and of the days outside those. ${STANDOUT_RULE} ${CAUSE_NOTE}</p>
       ${stands.map((r) => `${stands.length > 1 ? `<h3>${esc(PATHWAY_WORDS[r.who]())}</h3>` : ''}${r.standing.length
         ? r.standing.map((row) => `<p class="standout-row">${esc(standoutText(row))}</p><p class="report-meta">${esc(standoutDatesText(row).join(' '))}</p>`).join('')
         : `<p class="report-meta">${esc(standoutEmpty(r, rangeName))}</p>`}${r.everyday.length ? `<p class="report-meta">${esc(everydayText(r))}</p>` : ''}`).join('')}
@@ -2020,7 +2041,7 @@ function reportHtml() {
     </section>
     <section class="keep">
       <h2>New foods</h2>
-      <p class="report-meta">Foods eaten for the first time in this range, and how that day and the next went. One occasion each; nothing is ranked.</p>
+      <p class="report-meta">Foods eaten for the first time in this range, and how that day and the two after went. One occasion each; nothing is ranked.</p>
       ${fresh.map((r) => `${fresh.length > 1 ? `<h3>${esc(PATHWAY_WORDS[r.who]())}</h3>` : ''}${newFoodsHtml(r.list, rangeName)}`).join('')}
     </section>
     <section class="keep">
