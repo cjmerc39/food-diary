@@ -681,8 +681,10 @@ export function statusNow(state, { fromDay, today }) {
 // tracked days outside every shadow; a day counts once however many shadows
 // overlap it, and both sides are days with entries. A food needs
 // STANDOUT_MIN_EATEN days eaten and STANDOUT_MIN_NOT tracked days outside its
-// shadow; a food eaten most days shadows nearly everything, has too few days
-// outside to compare against, and is listed as such instead. Foods and tags
+// shadow. The rest are listed as what they are: eaten on too few separate
+// days yet (`few`), or eaten so often or so evenly that the shadow covers
+// nearly everything and there is nothing to compare against (`everyday`).
+// Every row is in exactly one of compared, everyday, or few. Foods and tags
 // she marked safe are left out. A food stands out when, for every time it was
 // eaten, its own three days were heavier than the average day outside, and the
 // shadow as a whole is heavier by STANDOUT_GAP load points or more, so one
@@ -731,7 +733,7 @@ const KIND_ORDER = { tag: 0, food: 1, name: 2 };
 export function standingOut(state, { fromDay, today, who }) {
   const start = trackingStart(state);
   const from = start && start > fromDay ? start : fromDay;
-  const base = { who, from, trackingStart: start, loggedDays: 0, enough: false, usual: 0, standing: [], everyday: [], compared: 0, rows: [] };
+  const base = { who, from, trackingStart: start, loggedDays: 0, enough: false, usual: 0, standing: [], everyday: [], few: [], compared: 0, rows: [] };
   if (!start || from > today) return base;
   const days = loggedDays(state, from, today);
   const safeTags = safeTagsOf(state);
@@ -774,12 +776,14 @@ export function standingOut(state, { fromDay, today, who }) {
     else { bySig.set(sig, r); kept.push(r); }
   }
   const enough = days.size >= STANDOUT_MIN_EATEN + STANDOUT_MIN_NOT;
+  const byMost = (a, b) => b.eatenDays - a.eatenDays || a.label.localeCompare(b.label);
   const compared = kept.filter((r) => r.eatenDays >= STANDOUT_MIN_EATEN && r.notDays >= STANDOUT_MIN_NOT);
-  const everyday = enough ? kept.filter((r) => r.notDays < STANDOUT_MIN_NOT).sort((a, b) => b.eatenDays - a.eatenDays || a.label.localeCompare(b.label)) : [];
+  const everyday = enough ? kept.filter((r) => r.eatenDays >= STANDOUT_MIN_EATEN && r.notDays < STANDOUT_MIN_NOT).sort(byMost) : [];
+  const few = enough ? kept.filter((r) => r.eatenDays < STANDOUT_MIN_EATEN).sort(byMost) : [];
   const standing = compared.filter((r) => r.gap >= STANDOUT_GAP && r.heavier === r.eatenDays)
     .sort((a, b) => b.gap - a.gap || b.eatenDays - a.eatenDays || a.label.localeCompare(b.label))
     .slice(0, STANDOUT_LIMIT);
-  return { ...base, loggedDays: days.size, enough, usual: avg([...days.values()]), standing, everyday, compared: compared.length, rows: kept };
+  return { ...base, loggedDays: days.size, enough, usual: avg([...days.values()]), standing, everyday, few, compared: compared.length, rows: kept };
 }
 
 // ---- new foods -------------------------------------------------------------------

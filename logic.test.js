@@ -800,6 +800,9 @@ test('standing out: each eating is its day and the two after, against the tracke
     'almond milk every fourth day leaves only Sep 5, 9, 13, 17 outside its shadow: fewer than 5, so it is set aside');
   assert.deepEqual(byLabel(r.rows, 'oat').also, [{ kind: 'food', label: 'Oatmeal', id: 'oat' }]);
   assert.equal(r.rows.length, 7, 'egg, oat, shellfish, Almond milk, the rolls, Sesame bar, Coke zero');
+  // Not eaten on enough separate days yet: named as such, closest to enough first.
+  assert.deepEqual(r.few.map((x) => [x.label, x.eatenDays]), [['Coke zero', 2], ['shellfish', 2], ['Sesame bar', 1]], 'closest to enough first, then by name');
+  assert.equal(r.compared + r.everyday.length + r.few.length, r.rows.length, 'every food is in exactly one of compared, everyday, or few');
   assert.ok(byLabel(r.rows, 'Coke zero').eatenDays === 2 && byLabel(r.rows, 'Coke zero').kind === 'name', 'older entries fold in by name; the Sep 2 one predates tracking');
   // The range chips narrow both sides.
   const recent = L.standingOut(s, { ...OPTS, fromDay: '2026-09-10' });
@@ -838,8 +841,8 @@ test('standing out: too few days is the normal answer, not a reason to loosen an
     symptomLog: [sym('s1', `${day(1)}T10:00`, 'crying', 1)],
   });
   const e = L.standingOut(sparse, { fromDay: '2026-08-20', today: day(7), who: 'parent' });
-  assert.deepEqual([e.enough, e.loggedDays, e.standing, e.everyday, e.compared, e.rows.length], [false, 7, [], [], 0, 1],
-    'seven days with entries: not enough for 3 eaten and 5 outside, and toast is not called an everyday food either');
+  assert.deepEqual([e.enough, e.loggedDays, e.standing, e.everyday, e.few, e.compared, e.rows.length], [false, 7, [], [], [], 0, 1],
+    'seven days with entries: not enough for 3 eaten and 5 outside, and toast is neither an everyday food nor one eaten on too few days: one line covers it');
   assert.equal(L.STANDOUT_MIN_EATEN + L.STANDOUT_MIN_NOT, 8);
   const none = L.standingOut(diary({ foodLog: [food('f1', '2026-09-02T08:00', ['dairy'])] }), OPTS);
   assert.deepEqual([none.trackingStart, none.loggedDays, none.standing, none.rows], [null, 0, [], []], 'food but no symptom yet: tracking has not begun');
@@ -853,7 +856,7 @@ test('safe foods and tags are hers alone: left out of the comparison, kept by re
   assert.deepEqual(r1.standing.map((x) => [x.label, x.also]), [['egg', []]], 'the food is out; the egg tag is its own thing until it is marked too');
   const safeBoth = { ...safeFood, settings: { ...s.settings, safeTags: ['egg'] } };
   const r2 = L.standingOut(safeBoth, OPTS);
-  assert.deepEqual([r2.standing, r2.rows.map((x) => x.label), r2.compared], [[], ['oat', 'shellfish', 'Almond milk', "Annie's rolls", 'Sesame bar', 'Coke zero'], 1]);
+  assert.deepEqual([r2.standing, r2.rows.map((x) => x.label), r2.compared, r2.everyday.length, r2.few.length], [[], ['oat', 'shellfish', 'Almond milk', "Annie's rolls", 'Sesame bar', 'Coke zero'], 1, 2, 3]);
   assert.deepEqual(L.newFoods({ ...s, foodItems: s.foodItems.map((it) => (it.id === 'ses' ? { ...it, safe: true } : it)) }, OPTS).map((n) => n.label),
     ["Annie's rolls", 'Mini weenies', 'Shrimp', 'Almond milk'], 'safe foods are left out of new foods too');
   // Restore keeps a true flag and drops anything else; merge unions the tags.

@@ -80,9 +80,11 @@ own files so it works offline; the diary itself lives only in localStorage.
   but the reactions looked for (mucus, loose stools, gas, eczema) arrive
   hours to days later, so each eating counts as three days: the day it was
   eaten and the two after, a day counted once however many overlap. A food
-  needs 3 days eaten and 5 tracked days outside those three-day stretches;
-  one eaten most days covers nearly everything and is named under one line
-  as eaten too often to compare against anything. A food is listed only
+  needs 3 days eaten and 5 tracked days outside those three-day stretches.
+  The rest are accounted for in two lines, the names a tap away: foods eaten
+  too often, or too evenly, to compare against anything (the stretches cover
+  nearly everything), and how many foods have not been eaten on 3 separate
+  days yet. Every food is in exactly one of the three groups. A food is listed only
   when, for every time it was eaten, its three days were heavier than the
   other days, and by 2 load points or more on average overall; at most three
   per pathway, each one sentence, with its days (and each day's load) a tap

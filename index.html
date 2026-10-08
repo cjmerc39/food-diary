@@ -490,9 +490,13 @@ details[open].standout > summary::after{content:"Hide the dates"}
 .dates{margin-top:8px;color:var(--ink2);font-size:15px;line-height:1.45}
 .dates p + p{margin-top:4px}
 .dates .chip{min-height:44px;margin-top:10px;padding:0 16px;font-size:15px}
-.standout-none,.everyday,.newfood-none{margin-top:6px}
-.everyday{color:var(--ink2);font-size:15px;line-height:1.45}
-.everyday b{color:var(--ink)}
+.standout-none,.newfood-none{margin-top:6px}
+details.aside{margin-top:10px}
+details.aside > summary{list-style:none;cursor:pointer;display:flex;align-items:flex-start;gap:12px;min-height:44px;color:var(--ink2);font-size:15px;line-height:1.45}
+details.aside > summary::-webkit-details-marker{display:none}
+details.aside > summary::after{content:"Show";flex:none;margin-left:auto;color:var(--sym-ink);font-weight:600;font-size:14px}
+details.aside[open] > summary::after{content:"Hide"}
+.aside-list{margin-top:4px;padding-left:2px;font-size:15px;line-height:1.45}
 details.safe-line{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
 details.safe-line > summary{list-style:none;cursor:pointer;min-height:44px;display:flex;align-items:center;color:var(--ink2);font-size:15px}
 details.safe-line > summary::-webkit-details-marker{display:none}
@@ -707,7 +711,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 22;
+const BUILD = 23;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -1459,16 +1463,27 @@ function standoutDatesText(r) {
 }
 function standoutEmpty(r, rangeName) {
   if (!r.enough) return `Not enough days logged yet to compare foods over ${rangeName}.`;
-  if (!r.compared) return `No food could be compared over ${rangeName}. Each was eaten too often, or on fewer than ${STANDOUT_MIN_EATEN} days.`;
+  if (!r.compared) return `No food could be compared over ${rangeName} yet.`;
   return `No food stands out over ${rangeName}. No food's days were clearly heavier than the other days.`;
 }
-const everydayText = (r) => `Eaten too often to compare against anything: ${r.everyday.map(rowName).join('; ')}.`;
+// The foods that could not be compared, as two lines with the names a tap away:
+// eaten too often or too evenly (the shadow covers nearly everything), and
+// not yet eaten on enough separate days.
+const ASIDE_NAMES = 3;
+const asideNames = (rows) => {
+  const names = rows.map(rowName);
+  return names.length <= ASIDE_NAMES ? names.join(', ') : `${names.slice(0, ASIDE_NAMES).join(', ')}, and ${names.length - ASIDE_NAMES} more`;
+};
+const everydayText = (r, all = false) => `Eaten too often, or too evenly, to compare against anything: ${all ? r.everyday.map(rowName).join(', ') : asideNames(r.everyday)}.`;
+const fewText = (r) => `${r.few.length === 1 ? '1 food has' : `${r.few.length} foods have`} not been eaten on ${STANDOUT_MIN_EATEN} separate days yet, so ${r.few.length === 1 ? 'it' : 'they'} cannot be compared.`;
+const asideHtml = (cls, text, rows) => `<details class="aside ${cls}"><summary>${esc(text)}</summary>
+    <ul class="plain aside-list">${rows.map((x) => `<li>${esc(rowName(x))}: eaten on ${esc(dayWord(x.eatenDays))}</li>`).join('')}</ul></details>`;
 function standoutHtml(r, rangeName) {
   const rows = r.standing.length ? r.standing.map((row) => `<details class="standout" data-key="${esc(row.key)}"><summary>${esc(standoutText(row))}</summary>
     <div class="dates">${standoutDatesText(row).map((t) => `<p>${esc(t)}</p>`).join('')}${row.kind === 'name' ? ''
       : `<button class="chip" data-act="mark-safe" data-keys="${esc(safeKeys(row).join(' '))}">Mark ${esc(rowName(row))} safe</button>`}</div></details>`).join('')
     : `<p class="hint standout-none">${esc(standoutEmpty(r, rangeName))}</p>`;
-  return rows + (r.everyday.length ? `<p class="everyday">${esc(everydayText(r))}</p>` : '');
+  return rows + (r.everyday.length ? asideHtml('everyday', everydayText(r), r.everyday) : '') + (r.few.length ? asideHtml('fewdays', fewText(r), r.few) : '');
 }
 function safeLineHtml() {
   const list = [...safeTags().map((t) => ({ kind: 'tag', id: t.id, label: t.label })), ...safeFoods().map((it) => ({ kind: 'food', id: it.id, label: it.label }))];
@@ -2036,7 +2051,7 @@ function reportHtml() {
       <p class="report-meta">Each food's days against the other days, over this range, from when symptom tracking began: the daily symptom load of the day it was eaten and the two after, on average, and of the days outside those. ${STANDOUT_RULE} ${CAUSE_NOTE}</p>
       ${stands.map((r) => `${stands.length > 1 ? `<h3>${esc(PATHWAY_WORDS[r.who]())}</h3>` : ''}${r.standing.length
         ? r.standing.map((row) => `<p class="standout-row">${esc(standoutText(row))}</p><p class="report-meta">${esc(standoutDatesText(row).join(' '))}</p>`).join('')
-        : `<p class="report-meta">${esc(standoutEmpty(r, rangeName))}</p>`}${r.everyday.length ? `<p class="report-meta">${esc(everydayText(r))}</p>` : ''}`).join('')}
+        : `<p class="report-meta">${esc(standoutEmpty(r, rangeName))}</p>`}${r.everyday.length ? `<p class="report-meta">${esc(everydayText(r, true))}</p>` : ''}${r.few.length ? `<p class="report-meta">${esc(fewText(r))}</p>` : ''}`).join('')}
       ${safeFoods().length || safeTags().length ? `<p class="report-meta">Marked safe by the parent and left out: ${esc([...safeTags(), ...safeFoods()].map((x) => x.label).join(', '))}.</p>` : ''}
     </section>
     <section class="keep">
