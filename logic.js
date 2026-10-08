@@ -704,6 +704,77 @@ export function statusNow(state, { fromDay, today }) {
   };
 }
 
+// ---- trials -----------------------------------------------------------------------
+// Removal and reintroduction are the one method with a real answer: the list
+// below nominates candidates; a trial is where an answer comes from. A phase
+// started after symptom tracking began, with enough tracked days on both
+// sides, gets a read-out: the average gut score over the TRIAL_BEFORE_DAYS
+// days before it started, against the days since (through its end, or
+// today). A phase from before tracking began gets no comparison at all: the
+// days before it say nothing about symptoms, so a comparison against them
+// compares nothing (the bug build 21 removed). The standard shape is stated,
+// not enforced: removals are judged over 2 to 4 weeks, reintroductions over
+// 48 to 72 hours. Nothing here nudges, reminds, or recommends.
+//   { phase, kind, tag, startDay, lastDay, ended, verdict: 'before-tracking' | 'young' | 'no-before' | 'ok',
+//     before: { days, avg }, since: { days, avg } }
+export const TRIAL_BEFORE_DAYS = 14;
+export const TRIAL_MIN_BEFORE = 5;                                   // tracked days in the window before
+export const TRIAL_MIN_SINCE = { eliminate: 7, reintroduce: 3 };     // tracked days since, by kind
+
+function spanAvg(days, fromDay, toDay) {
+  const scores = [...days].filter(([d]) => d >= fromDay && d <= toDay).map(([, s]) => s);
+  return { days: scores.length, avg: avg(scores) };
+}
+
+export function phaseTrials(state, { today }) {
+  const start = trackingStart(state);
+  const days = start ? loggedDays(state, start, today) : new Map();
+  return state.phases
+    .filter((p) => isTs(p.start) && dayKey(p.start) <= today && (p.kind === 'eliminate' || p.kind === 'reintroduce'))
+    .sort(byStart)
+    .map((p) => {
+      const startDay = dayKey(p.start);
+      const endDay = p.end ? addDays(dayKey(p.end), -1) : today;
+      const lastDay = endDay < today ? endDay : today;
+      const base = { phase: p, kind: p.kind, tag: p.tag, startDay, lastDay, ended: p.end != null && dayKey(p.end) <= today };
+      if (!start || startDay <= start) return { ...base, verdict: 'before-tracking', before: { days: 0, avg: 0 }, since: { days: 0, avg: 0 } };
+      const before = spanAvg(days, addDays(startDay, -TRIAL_BEFORE_DAYS), addDays(startDay, -1));
+      const since = spanAvg(days, startDay, lastDay);
+      const verdict = since.days < TRIAL_MIN_SINCE[p.kind] ? 'young' : before.days < TRIAL_MIN_BEFORE ? 'no-before' : 'ok';
+      return { ...base, verdict, before, since };
+    });
+}
+
+// Starting a trial from a candidate row, as one step. An allergen tag row is
+// a phase on that tag. A food row needs a tag the phase can follow: one named
+// for the food, reused if a tag with that name exists, made otherwise, and
+// put on the food when the phase is saved so banners and the watch can see
+// it. An older entry's name has no food to tag. Offered as a step, never
+// recommended; the app never starts one on its own.
+//   { tag, label, newTag: { id, label } | null, foodIds: [id] } | null
+export function trialDraft(state, row) {
+  if (row.kind === 'tag') return { tag: row.label, label: tagLabel(state.settings, row.label), newTag: null, foodIds: [] };
+  if (row.kind !== 'food' || !row.id) return null;
+  const existing = allTags(state.settings).find((t) => normName(t.label) === normName(row.label));
+  if (existing) return { tag: existing.id, label: existing.label, newTag: null, foodIds: [row.id] };
+  const made = addCustomTag(state.settings, row.label);
+  if (made.error) return null;
+  const label = String(row.label).trim().replace(/\s+/g, ' ');
+  return { tag: made.id, label, newTag: { id: made.id, label }, foodIds: [row.id] };
+}
+
+// The settings and foods after a trial draft is saved: the new tag added, and
+// the food carrying it. The phase itself is the sheet's to add.
+export function applyTrialDraft(state, draft) {
+  const settings = draft.newTag && !(state.settings.customTags || []).some((t) => t.id === draft.newTag.id)
+    ? { ...state.settings, customTags: [...(state.settings.customTags || []), draft.newTag] }
+    : state.settings;
+  const foodItems = (state.foodItems || []).map((it) => (draft.foodIds.includes(it.id) && !(it.tags || []).includes(draft.tag)
+    ? { ...it, tags: [...(it.tags || []), draft.tag], uncertain: (it.uncertain || []).filter((t) => t !== draft.tag) }
+    : it));
+  return { settings, foodItems };
+}
+
 // ---- anything standing out ------------------------------------------------------------
 // Every food through one pathway (an allergen tag, a picked food, or an older
 // entry's name, all just foods here) by the days after it was eaten against

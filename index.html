@@ -496,6 +496,8 @@ details[open].standout > summary::after{content:"Hide the dates"}
 .dates{margin-top:8px;color:var(--ink2);font-size:15px;line-height:1.45}
 .dates p + p{margin-top:4px}
 .dates .chip{min-height:44px;margin-top:10px;padding:0 16px;font-size:15px}
+.row-acts{display:flex;flex-wrap:wrap;gap:8px}
+.answers.trials li{border-color:var(--food)}
 .verdict{display:block;margin-top:6px;color:var(--ink2);font-size:14px;line-height:1.4}
 .verdict.clear{color:var(--sym-ink);font-weight:600}
 details.standout.clear{box-shadow:inset 3px 0 0 var(--sym)}
@@ -708,6 +710,7 @@ import {
   rankMeals, searchMeals, findMealByName, autoMealName,
   hasItems, itemResolver, resolveItems, itemTags, mealTags, findItemByLabel, pickableItems, mergeItem,
   statusNow, standingOut, newFoods, trackingStart, STANDOUT_GAP, STANDOUT_MIN_EATEN, dayScoreParts, SCORE_MAX,
+  phaseTrials, trialDraft, applyTrialDraft, TRIAL_BEFORE_DAYS, TRIAL_MIN_BEFORE, TRIAL_MIN_SINCE,
   foodsToReview, foodReviewCard,
   symptomMissing, symptomFields, dayEntries, exposureBanners, pruneDismissed, reintroWatches,
   standaloneHeight, TREND_RANGES, daysBetween, slugify,
@@ -723,7 +726,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 26;
+const BUILD = 27;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -1493,6 +1496,49 @@ function statusLines(st, range) {
 }
 const statusList = (lines) => `<ul class="answers">${lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>`;
 
+// Trials: the read-out for a phase started after tracking began, in plain counts.
+const TRIAL_SHAPE = 'Removals are judged over 2 to 4 weeks, reintroductions over 48 to 72 hours.';
+const TRIAL_CAUTION = 'Each food removed has a nutritional cost. What to remove or bring back next is a decision for your pediatrician, not this app.';
+const trackedWord = (n) => `${n} ${n === 1 ? 'day' : 'days'} with entries`;
+function trialText(t) {
+  const food = tagLabel(S.settings, t.tag);
+  const came = t.kind === 'reintroduce' ? 'came back' : 'came out';
+  const when = `${food} ${came} on ${fmtDate(t.phase.start)}`;
+  if (t.verdict === 'young') return `${when}: ${trackedWord(t.since.days)} since, too soon to read. A ${t.kind === 'reintroduce' ? 'reintroduction' : 'removal'} is read from ${TRIAL_MIN_SINCE[t.kind]} on.`;
+  if (t.verdict === 'no-before') return `${when}, with only ${trackedWord(t.before.days)} in the two weeks before it. A read-out needs ${TRIAL_MIN_BEFORE}.`;
+  const sinceWords = t.ended ? `In the ${dayWord(t.since.days)} it was ${t.kind === 'reintroduce' ? 'back' : 'out'}` : `In the ${dayWord(t.since.days)} since`;
+  return `${when}. In the two weeks before${t.kind === 'reintroduce' ? ', while it was out,' : ','} the gut score averaged ${oneDp(t.before.avg)} over ${trackedWord(t.before.days)}. ${sinceWords}, ${oneDp(t.since.avg)} over ${trackedWord(t.since.days)}.`;
+}
+const trialsShown = (trials) => trials.filter((t) => t.verdict !== 'before-tracking');
+function trialsHtml(trials) {
+  const shown = trialsShown(trials);
+  if (!shown.length) return '';
+  return `
+    <section class="card answer" data-answer="trials">
+      <h2 class="chart-title">Trials</h2>
+      <p class="fine">Removing a food and bringing it back is the one method with a real answer; the list below only nominates candidates. ${TRIAL_SHAPE}</p>
+      <ul class="answers trials">${shown.map((t) => `<li data-verdict="${t.verdict}" data-phase="${esc(t.phase.id)}">${esc(trialText(t))}</li>`).join('')}</ul>
+      <p class="fine">${TRIAL_CAUTION}</p>
+    </section>`;
+}
+// The row's foods as trial drafts: its tag if it has one, else each food by name.
+function trialKeys(row) {
+  const names = [row, ...row.also];
+  const tag = names.find((x) => x.kind === 'tag');
+  if (tag) return [{ key: `tag:${tag.label}`, label: tagLabel(S.settings, tag.label) }];
+  return names.filter((x) => x.kind === 'food' && x.id).map((x) => ({ key: `food:${x.id}`, label: x.label }));
+}
+const trialButtons = (row) => trialKeys(row).map((x) =>
+  `<button class="chip" data-act="start-trial" data-key="${esc(x.key)}">Remove ${esc(x.label)} for a trial</button>`).join('');
+function startTrial(key) {
+  const at = key.indexOf(':');
+  const kind = key.slice(0, at), id = key.slice(at + 1);
+  const row = kind === 'tag' ? { kind: 'tag', label: id } : (() => { const it = S.foodItems.find((x) => x.id === id); return it ? { kind: 'food', id: it.id, label: it.label } : null; })();
+  const draft = row && trialDraft(S, row);
+  if (!draft) return;
+  openPhaseSheet(null, draft);
+}
+
 // Anything standing out: a sentence per food, its days a tap away.
 function standoutText(r) {
   return `${rowName(r)}: eaten on ${dayWord(r.eatenDays)}. Those days and the two after each (${dayWord(r.afterDays)}) averaged a gut score of ${oneDp(r.avgAfter)}. The other ${dayWord(r.notDays)} averaged ${oneDp(r.avgNot)}.`;
@@ -1545,7 +1591,7 @@ function standoutHtml(r, rangeName) {
     ? (r.top.some((row) => row.clears) ? '' : `<p class="hint standout-lead">${esc(leadText(r))}</p>`)
       + r.top.map((row) => `<details class="standout${row.clears ? ' clear' : ''}" data-key="${esc(row.key)}"><summary>${esc(standoutText(row))}<span class="verdict${row.clears ? ' clear' : ''}">${esc(verdictText(row))}</span></summary>
     <div class="dates">${standoutDatesText(row).map((t) => `<p>${esc(t)}</p>`).join('')}${row.kind === 'name' ? ''
-      : `<button class="chip" data-act="mark-safe" data-keys="${esc(safeKeys(row).join(' '))}">Mark ${esc(rowName(row))} safe</button>`}</div></details>`).join('')
+      : `<div class="row-acts">${trialButtons(row)}<button class="chip" data-act="mark-safe" data-keys="${esc(safeKeys(row).join(' '))}">Mark ${esc(rowName(row))} safe</button></div>`}</div></details>`).join('')
       + `<p class="fine standout-note">${esc(TOP_NOTE)}</p>`
     : `<p class="hint standout-none">${esc(standoutEmpty(r, rangeName))}</p>`;
   return rows + (r.everyday.length ? asideHtml('everyday', everydayText(r), r.everyday) : '')
@@ -1586,8 +1632,9 @@ function newFoodsHtml(list, rangeName) {
 }
 
 // For the next visit: where things stand and what stood out, as lines to read aloud.
-function visitLines(st, stands, range, rangeName) {
+function visitLines(st, stands, range, rangeName, trials = []) {
   const lines = statusLines(st, range);
+  for (const t of trialsShown(trials)) if (t.verdict === 'ok') lines.push(trialText(t));
   const found = stands.flatMap((r) => r.standing.map((row) =>
     `${rowName(row)}${r.who === 'baby' ? ` (${babyLabel()}'s own food)` : ''}: its days averaged a gut score of ${oneDp(row.avgAfter)}, the other days ${oneDp(row.avgNot)}`));
   const first = stands.find((r) => r.top.length);
@@ -1601,13 +1648,14 @@ function answersData(fromDay, toDay = todayKey()) {
   const pathways = ['parent', ...(hasBabyFood(S) ? ['baby'] : [])];
   return {
     status: statusNow(S, { fromDay, today: toDay }),
+    trials: phaseTrials(S, { today: toDay }),
     stands: pathways.map((who) => standingOut(S, { fromDay, today: toDay, who })),
     fresh: pathways.map((who) => ({ who, list: newFoods(S, { fromDay, today: toDay, who }) })),
   };
 }
 
 function answersHtml(fromDay) {
-  const { status, stands, fresh } = answersData(fromDay);
+  const { status, trials, stands, fresh } = answersData(fromDay);
   const range = { preset: U.trendRange, fromDay };
   const rangeName = rangeWords(U.trendRange);
   const solids = stands.length > 1;
@@ -1617,7 +1665,7 @@ function answersHtml(fromDay) {
     <section class="card answer" data-answer="status">
       <h2 class="chart-title">Where things stand</h2>
       ${statusList(statusLines(status, range))}
-    </section>
+    </section>${trialsHtml(trials)}
     <section class="card answer" data-answer="standing">
       <h2 class="chart-title">Anything standing out</h2>
       <p class="fine">Each food's days against the other days, over ${esc(rangeName)}: the gut score of the day it was eaten and the two after, on average, and of the days outside those. ${STANDOUT_RULE} Tap a food for its days. ${CAUSE_NOTE}</p>
@@ -1631,7 +1679,7 @@ function answersHtml(fromDay) {
     </section>
     <section class="card answer" data-answer="visit">
       <h2 class="chart-title">For the next visit</h2>
-      <ul class="answers visit">${visitLines(status, stands, range, rangeName).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
+      <ul class="answers visit">${visitLines(status, stands, range, rangeName, trials).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
       <p class="fine">The report under More carries the same lines.</p>
     </section>`;
 }
@@ -2076,8 +2124,9 @@ function reportHtml() {
   const name = S.babyName.trim();
   const series = trendSeries(S, from, to);
   const bands = phaseBands(S.phases, from, to);
-  const { status, stands, fresh } = answersData(from, to);
+  const { status, trials, stands, fresh } = answersData(from, to);
   const range = { preset: U.report.preset, fromDay: from };
+  const shownTrials = trialsShown(trials);
   // Named like Trends names it when the range is one of its presets, so the two read the same.
   const rangeName = U.report.preset ? rangeWords(U.report.preset) : 'this range';
   const entries = rangeEntries(S, from, to);
@@ -2116,6 +2165,12 @@ function reportHtml() {
       <h2>Where things stand</h2>
       ${statusList(statusLines(status, range))}
     </section>
+    ${shownTrials.length ? `<section class="keep">
+      <h2>Trials</h2>
+      <p class="report-meta">Each removal or reintroduction begun after symptom tracking started, read as plain averages of the daily gut score over days with entries. ${TRIAL_SHAPE}</p>
+      <ul class="answers">${shownTrials.map((t) => `<li>${esc(trialText(t))}</li>`).join('')}</ul>
+      <p class="report-meta">${TRIAL_CAUTION}</p>
+    </section>` : ''}
     <section class="keep">
       <h2>Anything standing out</h2>
       <p class="report-meta">Each food's days against the other days, over this range, from when symptom tracking began: the gut score of the day it was eaten and the two after, on average, and of the days outside those. ${STANDOUT_RULE} ${CAUSE_NOTE}</p>
@@ -2133,7 +2188,7 @@ function reportHtml() {
     </section>
     <section class="keep">
       <h2>For the next visit</h2>
-      <ul class="answers">${visitLines(status, stands, range, rangeName).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
+      <ul class="answers">${visitLines(status, stands, range, rangeName, trials).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
     </section>
     <section>
       <h2>Log</h2>
@@ -3573,17 +3628,19 @@ function openSetSheet(id, back = null) {
 }
 
 // ---- phases ------------------------------------------------------------------------------
-function openPhaseSheet(id = null) {
+// `trial` is a draft from a standing-out row: the sheet opens prefilled as a
+// removal of that food, dated today, for her to confirm or change.
+function openPhaseSheet(id = null, trial = null) {
   const p = id ? S.phases.find((x) => x.id === id) : null;
   if (id && !p) return;
   const today = todayKey();
   const d = p
     ? { kind: p.kind, tag: p.tag, start: dayKey(p.start), ended: p.end != null, end: p.end ? dayKey(p.end) : today, note: p.note || '' }
-    : { kind: 'eliminate', tag: null, start: today, ended: false, end: today, note: '', closeElim: true };
+    : { kind: 'eliminate', tag: trial ? trial.tag : null, start: today, ended: false, end: today, note: '', closeElim: true, trial };
   const start = JSON.stringify(d);
   const refresh = () => { fillSheet({ body: phaseBody(d, p) }); setFoot(phaseState(d)); };
   openSheet({
-    title: p ? 'Edit phase' : 'Add a phase',
+    title: p ? 'Edit phase' : trial ? 'Start a trial' : 'Add a phase',
     body: phaseBody(d, p),
     foot: phaseFoot(d, p),
     isDirty: () => JSON.stringify(d) !== start,
@@ -3616,11 +3673,12 @@ function closingHtml(d, p) {
 
 function phaseBody(d, p) {
   const tags = allTags(S.settings).filter((t) => !t.hidden || t.id === d.tag);
+  if (d.trial && d.trial.newTag && !tags.some((t) => t.id === d.trial.newTag.id)) tags.push({ id: d.trial.newTag.id, label: d.trial.newTag.label, hidden: false });
   const seg = (act, key, value, label, on) => `<button data-act="${act}" data-${key}="${value}" aria-pressed="${on}">${label}</button>`;
   return `
     <div class="sect"><span class="sect-label">Type</span>
       <div class="seg">${seg('kind', 'kind', 'eliminate', 'Eliminate', d.kind === 'eliminate')}${seg('kind', 'kind', 'reintroduce', 'Reintroduce', d.kind === 'reintroduce')}</div>
-      <p class="hint">${d.kind === 'eliminate' ? 'Taking a food out of your diet.' : 'Bringing one food back. Watch 48 to 72 hours after each try before changing anything else.'}</p>
+      <p class="hint">${d.kind === 'eliminate' ? `Taking a food out of your diet.${d.trial ? ' Removals are judged over 2 to 4 weeks.' : ''}` : 'Bringing one food back. Watch 48 to 72 hours after each try before changing anything else.'}</p>
     </div>
     <div class="sect"><span class="sect-label">Food</span>
       <div class="chips">${tags.map((t) => `<button class="chip" data-act="ptag" data-tag="${esc(t.id)}" aria-pressed="${d.tag === t.id}">${esc(t.label)}</button>`).join('')}</div>
@@ -3644,7 +3702,7 @@ const phaseState = (d) => ({ hint: phaseProblem(d), disabled: !!phaseProblem(d) 
 
 function phaseFoot(d, p) {
   const problem = phaseProblem(d);
-  const btn = `<button class="btn btn-primary" data-act="phase-save" data-primary${problem ? ' disabled' : ''}>${p ? 'Save' : 'Add phase'}</button>`;
+  const btn = `<button class="btn btn-primary" data-act="phase-save" data-primary${problem ? ' disabled' : ''}>${p ? 'Save' : d.trial ? 'Start the trial' : 'Add phase'}</button>`;
   return `<p class="foot-hint">${problem}</p>${p
     ? `<div class="foot-row"><button class="btn btn-quiet-danger" data-act="delete">Delete</button>${btn}</div>`
     : btn}`;
@@ -3657,6 +3715,11 @@ function savePhase(d, p) {
   if (p) {
     Object.assign(p, fields);
   } else {
+    // A trial from a row: the food's tag is made (if new) and put on the food, so the phase can follow it.
+    if (d.trial && d.kind === 'eliminate' && d.tag === d.trial.tag) {
+      Object.assign(S, applyTrialDraft(S, d.trial));
+      msg = `Trial started: ${d.trial.label} is out from ${d.start === todayKey() ? 'today' : fmtDate(fields.start)}.`;
+    }
     const phase = { id: newId(), ...fields };
     if (d.kind === 'reintroduce' && !d.ended && d.closeElim) {
       const closing = phasesToClose(S.phases, d.tag, fields.start);
@@ -3934,6 +3997,7 @@ const ACTIONS = {
   'day-today': () => { U.day = null; render(); },
   'trend-range': (el) => { U.trendRange = el.dataset.range; render(); },
   'score-parts': (el) => openScoreSheet(el.dataset.day),
+  'start-trial': (el) => startTrial(el.dataset.key),
   'mark-safe': (el) => markSafe(el.dataset.keys),
   'unmark-safe': (el) => unmarkSafe(el.dataset.kind, el.dataset.id),
   'open-report': () => showReport(),

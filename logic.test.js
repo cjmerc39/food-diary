@@ -887,6 +887,50 @@ test('standing out: a food adopted partway through and eaten ever since has noth
   assert.deepEqual(L.standingOut(diary(), OPTS).adopted, []);
 });
 
+test('trials: a read-out only for a phase begun after tracking started, with enough days on both sides', () => {
+  const s = standoutDiary();   // tracked from Sep 5 to Sep 20, every day with entries
+  const trials = (phases, today = '2026-09-20') => L.phaseTrials({ ...s, phases }, { today });
+  const [old] = trials([{ ...phase('2026-08-20T00:00'), id: 'old' }]);
+  assert.deepEqual([old.verdict, old.before, old.since], ['before-tracking', { days: 0, avg: 0 }, { days: 0, avg: 0 }], 'a phase from before the first symptom entry gets no comparison');
+  assert.equal(trials([{ ...phase('2026-09-05T00:00'), id: 'edge' }])[0].verdict, 'before-tracking', 'starting on the first tracked day leaves nothing before it');
+  const [young] = trials([{ ...phase('2026-09-16T00:00'), id: 'young' }]);
+  assert.deepEqual([young.verdict, young.since.days, young.before.days], ['young', 5, 11], 'five days since a removal is too few; a removal is read from 7');
+  const [back] = trials([{ ...phase('2026-09-16T00:00', null, { kind: 'reintroduce' }), id: 'back' }]);
+  assert.equal(back.verdict, 'ok', 'a reintroduction is read from 3 days');
+  assert.deepEqual([back.before.days, back.since.days], [11, 5]);
+  assert.ok(near(back.before.avg, (1 + 5 + 3 + 1 + 1 + 0 + 5 + 3 + 1 + 1 + 0) / 11) && near(back.since.avg, (5 + 3 + 1 + 1 + 0) / 5), 'the 14 days before (clipped to tracking) against the days since');
+  const [thin] = trials([{ ...phase('2026-09-08T00:00'), id: 'thin' }]);
+  assert.deepEqual([thin.verdict, thin.before.days, thin.since.days], ['no-before', 3, 13], 'Sep 5 to 7 is too little before it');
+  const [ok] = trials([{ ...phase('2026-09-12T00:00'), id: 'ok' }]);
+  assert.deepEqual([ok.verdict, ok.before.days, ok.since.days, ok.ended, ok.lastDay], ['ok', 7, 9, false, '2026-09-20']);
+  assert.ok(near(ok.before.avg, (1 + 5 + 3 + 1 + 1 + 0 + 5) / 7) && near(ok.since.avg, (3 + 1 + 1 + 0 + 5 + 3 + 1 + 1 + 0) / 9));
+  const [ended] = trials([{ ...phase('2026-09-12T00:00', '2026-09-19T00:00'), id: 'ended' }]);
+  assert.deepEqual([ended.verdict, ended.ended, ended.lastDay, ended.since.days], ['ok', true, '2026-09-18', 7], 'an ended phase is read through the day before its end');
+  assert.deepEqual(trials([{ ...phase('2026-09-25T00:00'), id: 'future' }]), [], 'an upcoming phase is not a trial yet');
+  assert.deepEqual(L.phaseTrials(diary({ phases: [phase('2026-09-01T00:00')] }), { today: '2026-09-20' }).map((t) => t.verdict), ['before-tracking'], 'no symptoms yet: nothing to read');
+  assert.deepEqual([L.TRIAL_BEFORE_DAYS, L.TRIAL_MIN_BEFORE, L.TRIAL_MIN_SINCE], [14, 5, { eliminate: 7, reintroduce: 3 }]);
+});
+
+test('starting a trial from a row: a tag is the phase tag; a food gets a tag named for it, put on the food when saved', () => {
+  const s = standoutDiary();
+  assert.deepEqual(L.trialDraft(s, { kind: 'tag', label: 'egg' }), { tag: 'egg', label: 'Egg', newTag: null, foodIds: [] });
+  const rice = L.trialDraft(s, { kind: 'food', id: 'ses', label: 'Sesame bar' });
+  assert.deepEqual(rice, { tag: 'sesame-bar', label: 'Sesame bar', newTag: { id: 'sesame-bar', label: 'Sesame bar' }, foodIds: ['ses'] });
+  const applied = L.applyTrialDraft(s, rice);
+  assert.deepEqual(applied.settings.customTags, [{ id: 'sesame-bar', label: 'Sesame bar' }]);
+  assert.deepEqual(applied.foodItems.find((it) => it.id === 'ses').tags, ['sesame-bar'], 'the food carries the tag, so banners and the watch can follow it');
+  assert.equal(JSON.stringify(s.foodItems.find((it) => it.id === 'ses').tags), '[]', 'inputs untouched');
+  const again = L.applyTrialDraft({ ...s, ...applied }, rice);
+  assert.deepEqual([again.settings.customTags.length, again.foodItems.find((it) => it.id === 'ses').tags], [1, ['sesame-bar']], 'applying twice adds nothing twice');
+  const withTag = { ...s, settings: { ...s.settings, customTags: [{ id: 'coconut', label: 'Coconut curry' }] } };
+  assert.deepEqual(L.trialDraft(withTag, { kind: 'food', id: 'cc', label: 'coconut  CURRY' }), { tag: 'coconut', label: 'Coconut curry', newTag: null, foodIds: ['cc'] },
+    'a tag already named like the food is reused');
+  assert.equal(L.trialDraft(s, { kind: 'food', id: 'oat', label: 'Oatmeal' }).tag, 'oatmeal', 'a food named unlike any tag gets its own');
+  assert.equal(L.trialDraft(s, { kind: 'food', id: 'e', label: 'Eggs' }).tag, 'eggs', 'Eggs is not the Egg tag; the food keeps its own name');
+  assert.equal(L.trialDraft(s, { kind: 'name', label: 'Coke zero' }), null, 'an older entry has no food to tag');
+  assert.equal(L.trialDraft(s, { kind: 'food', id: 'x', label: '???' }), null);
+});
+
 test('standing out: one heavy stretch cannot carry a food; every eating has to be heavier than the days outside', () => {
   const foodLog = [], symptomLog = [];
   for (let d = 1; d <= 20; d++) foodLog.push(picked(`t${d}`, d, 'Toast', ['t'], [], '08:00'));

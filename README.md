@@ -79,8 +79,24 @@ own files so it works offline; the diary itself lives only in localStorage.
   in this order. **Where things stand**: what is out (and back) right now and
   since when, with the day number, then how the range went in her own terms:
   how many days have entries and on how many of them a symptom was logged. No
-  averages, no before-and-after; eliminations are standing constraints, not
-  experiments the app grades. **Anything standing out**: each food's days
+  averages, no before-and-after there; her three eliminations predate the
+  diary and are standing constraints, not experiments the app grades.
+  **Trials** (only when some removal or reintroduction began after symptom
+  tracking started): removal and reintroduction are the one method with a
+  real answer, so such a phase gets a read-out in plain counts: the average
+  gut score over days with entries in the 14 days before it, against the
+  days since (through its end, or today), the same for a reintroduction. It
+  needs 5 days with entries before and 7 since for a removal, 3 for a
+  reintroduction; otherwise one line says it is too soon. A phase from before
+  tracking began keeps its status line and gets no comparison. The card
+  states the standard shape once (removals judged over 2 to 4 weeks,
+  reintroductions over 48 to 72 hours) and that what to remove or bring back
+  next is the pediatrician's call: no nudges, reminders, or streaks. A
+  standing-out row offers "Remove X for a trial", which opens the phase sheet
+  prefilled as a removal dated today; a food without an allergen tag gets a
+  custom tag named for it when the trial is saved, and the food is tagged
+  with it so banners and the watch can follow it. The app offers the step and
+  never recommends the food. **Anything standing out**: each food's days
   against the other days, by daily gut score, counted only from the
   first symptom entry on (`trackingStart`): days before symptom tracking
   began hold food but say nothing about symptoms, and days with nothing
