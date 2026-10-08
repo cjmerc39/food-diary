@@ -355,13 +355,21 @@ function labelId(label) {
 // ---- symptoms ----------------------------------------------------------------
 
 export const SYMPTOM_CATS = ['crying', 'spitup', 'stool', 'gas', 'skin', 'resp', 'other'];
-// The five categories that make up the daily symptom load ("other" is not one).
-export const LOAD_CATS = ['crying', 'spitup', 'stool', 'skin', 'resp'];
-// Categories tracked per day: the load's five, plus gas, which is charted but
-// not counted, so the load keeps its clinical five and its 0 to 20 scale.
-export const DAY_CATS = [...LOAD_CATS, 'gas'];
+// The gut score, 0 to 12, is built from the symptoms she trusts: for non-IgE
+// milk and soy protein reactions the gut is the hallmark, while skin flares
+// are confounded (teething, the cats) and crying could be anything. Per day:
+// the worst stool (0 to 3), the worst gas (0 to 3), the worst spit-up (0 to
+// 3), plus 1 if mucus appeared and 2 if blood did. Skin, crying, and
+// breathing stay logged, charted per category, and in the report, but are
+// not in the score. The score is recomputed from entries, so history re-reads
+// under this definition.
+export const SCORE_CATS = ['stool', 'gas', 'spitup'];
+export const SCORE_MAX = 12;
+// Categories tracked per day for the category strips, in their display order.
+export const DAY_CATS = ['crying', 'spitup', 'stool', 'skin', 'resp', 'gas'];
 export const CAT_FLAGS = { stool: ['mucus', 'blood'], skin: ['hives'] };
-export const FLAG_POINTS = { blood: 2, mucus: 1, hives: 2 };
+// Points a flag adds to the score. Hives is logged and shown but adds nothing.
+export const FLAG_POINTS = { blood: 2, mucus: 1 };
 // Stool severity comes from consistency. A formed stool is normal, so it can
 // only be logged with a flag or a color worth a call; it then has severity 0
 // and counts its flags.
@@ -412,9 +420,12 @@ export function setItem(d) {
   return item;
 }
 
-// Points one symptom event adds: its severity plus its flags' points. A stool
-// entry standing for several diapers scores as that many entries would.
+// Gut score points one symptom event carries: its severity plus its flags'
+// points for a stool, gas, or spit-up entry; nothing for any other category.
+// A stool entry standing for several diapers scores as that many entries
+// would. The reintroduction watch tallies these over its 72 hours.
 export function eventPoints(e) {
+  if (!SCORE_CATS.includes(e.cat)) return 0;
   let points = Number.isFinite(e.severity) ? e.severity : 0;
   for (const f of e.flags || []) points += FLAG_POINTS[f] || 0;
   return e.cat === 'stool' ? points * stoolCount(e) : points;
@@ -457,12 +468,13 @@ export function bucketByDay(events) {
   return days;
 }
 
-// Symptom load for one local day, 0 to 20: for each of the five load
-// categories, the worst severity logged that day, plus 2 if blood appeared,
-// 1 for mucus, and 2 for hives, each counted once per day. `cats` also carries
-// gas (charted, not counted), and `stools` is how many stools were logged,
-// counting an entry for several diapers as that many.
-export function dayLoad(symptomLog, day) {
+// The gut score for one local day, 0 to 12: the worst stool, gas, and spit-up
+// severity logged that day, plus 2 if blood appeared and 1 for mucus, each
+// counted once per day. `cats` carries the worst severity of every category
+// (for the strips, scored or not), `flags` which flags appeared (hives shown,
+// not scored), and `stools` how many stools were logged, counting an entry
+// for several diapers as that many.
+export function dayScore(symptomLog, day) {
   const cats = Object.fromEntries(DAY_CATS.map((c) => [c, 0]));
   const flags = { blood: false, mucus: false, hives: false };
   let stools = 0;
@@ -472,15 +484,37 @@ export function dayLoad(symptomLog, day) {
     for (const f of e.flags || []) if (f in flags) flags[f] = true;
     stools += stoolCount(e);
   }
-  const load = LOAD_CATS.reduce((sum, c) => sum + cats[c], 0) +
-    Object.keys(flags).reduce((sum, f) => sum + (flags[f] ? FLAG_POINTS[f] : 0), 0);
-  return { day, load, cats, flags, stools };
+  const score = SCORE_CATS.reduce((sum, c) => sum + cats[c], 0) +
+    Object.keys(FLAG_POINTS).reduce((sum, f) => sum + (flags[f] ? FLAG_POINTS[f] : 0), 0);
+  return { day, score, cats, flags, stools };
 }
 
-export function loadSeries(symptomLog, fromDay, toDay) {
+// What made up a day's gut score, each part pointing at the entry behind it:
+// the entry with the worst severity in each scored category (the earliest on a
+// tie), and the first entry carrying each scored flag. The parts add up to
+// dayScore's score, so every point on the glance card can be scrolled to.
+//   { day, score, parts: [{ kind: 'cat', cat, points, eventId, ts } | { kind: 'flag', flag, points, eventId, ts }] }
+export function dayScoreParts(symptomLog, day) {
+  const entries = symptomLog.filter((e) => isTs(e.ts) && dayKey(e.ts) === day).sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+  const parts = [];
+  for (const cat of SCORE_CATS) {
+    let best = null;
+    for (const e of entries) {
+      if (e.cat === cat && Number.isFinite(e.severity) && e.severity > 0 && (!best || e.severity > best.severity)) best = e;
+    }
+    if (best) parts.push({ kind: 'cat', cat, points: best.severity, eventId: best.id, ts: best.ts });
+  }
+  for (const flag of Object.keys(FLAG_POINTS)) {
+    const e = entries.find((x) => (x.flags || []).includes(flag));
+    if (e) parts.push({ kind: 'flag', flag, points: FLAG_POINTS[flag], eventId: e.id, ts: e.ts });
+  }
+  return { day, score: parts.reduce((sum, x) => sum + x.points, 0), parts };
+}
+
+export function scoreSeries(symptomLog, fromDay, toDay) {
   const byDay = bucketByDay(symptomLog);
   const series = [];
-  for (let d = fromDay; d <= toDay; d = addDays(d, 1)) series.push(dayLoad(byDay.get(d) || [], d));
+  for (let d = fromDay; d <= toDay; d = addDays(d, 1)) series.push(dayScore(byDay.get(d) || [], d));
   return series;
 }
 
@@ -507,9 +541,9 @@ export function phasesOnDay(phases, day) {
 export function dayGlance(state, day) {
   const entries = dayEntries(state, day);
   const food = entries.filter((r) => r.kind === 'food').length;
-  const { load, stools } = dayLoad(state.symptomLog, day);
+  const { score, stools } = dayScore(state.symptomLog, day);
   return {
-    load,
+    score,
     stools,
     entries: entries.length,
     food,
@@ -631,8 +665,8 @@ export function trackingStart(state) {
   return first && dayKey(first);
 }
 
-// Days from fromDay through toDay with any entry, each with its symptom load.
-// A day with food logged and no symptom is a quiet day, load 0.
+// Days from fromDay through toDay with any entry, each with its gut score.
+// A day with food logged and no symptom is a quiet day, score 0.
 function loggedDays(state, fromDay, toDay) {
   const days = new Map();
   for (const e of state.foodLog) {
@@ -641,7 +675,7 @@ function loggedDays(state, fromDay, toDay) {
     if (d >= fromDay && d <= toDay && !days.has(d)) days.set(d, 0);
   }
   for (const [d, entries] of bucketByDay(state.symptomLog)) {
-    if (d >= fromDay && d <= toDay) days.set(d, dayLoad(entries, d).load);
+    if (d >= fromDay && d <= toDay) days.set(d, dayScore(entries, d).score);
   }
   return days;
 }
@@ -677,7 +711,7 @@ export function statusNow(state, { fromDay, today }) {
 // milk within hours and clear within a day, but the reactions looked for here
 // (mucus, loose stools, gas, eczema) arrive hours to days later, so each
 // eating casts a shadow of SHADOW_DAYS days: the day it was eaten and the two
-// after. The shadow days' symptom load, on average, against the load of the
+// after. The shadow days' gut score, on average, against the score of the
 // tracked days outside every shadow; a day counts once however many shadows
 // overlap it, and both sides are days with entries. A food needs
 // STANDOUT_MIN_EATEN days eaten and STANDOUT_MIN_NOT tracked days outside its
@@ -687,17 +721,23 @@ export function statusNow(state, { fromDay, today }) {
 // Every row is in exactly one of compared, everyday, or few. Foods and tags
 // she marked safe are left out. A food stands out when, for every time it was
 // eaten, its own three days were heavier than the average day outside, and the
-// shadow as a whole is heavier by STANDOUT_GAP load points or more, so one
-// rough stretch can't carry a food on its own. The rule is fixed, not tuned to
+// shadow as a whole is higher by STANDOUT_GAP or more, so one rough stretch
+// can't carry a food on its own. The rule is fixed, not tuned to
 // make rows appear: on most diaries nothing stands out, and that is a real
 // answer. Two names with exactly the same eaten days (a tag and its food, or
 // two foods always eaten together) are one row naming both.
 //   row: { key, kind, label, id?, also: [{ kind, label, id? }], who, eatenDays, afterDays, notDays,
-//          avgAfter, avgNot, gap, heavier, dates: [{ day, load, possible }], after: [{ day, load, eaten }] }
+//          avgAfter, avgNot, gap, heavier, dates: [{ day, score, possible }], after: [{ day, score, eaten }] }
 export const SHADOW_DAYS = 3;
 export const STANDOUT_MIN_EATEN = 3;
 export const STANDOUT_MIN_NOT = 5;
-export const STANDOUT_GAP = 2;       // load points between the two averages
+// The gap floor, in gut score points between the two averages. The score's
+// smallest step is one severity level in one symptom, or the mucus flag: 1
+// point. A floor of 1.5 asks for more than any single one-step change on
+// average (two steps in one symptom, one step in two, or a step plus mucus).
+// The old floor of 2 was a tenth of the 0 to 20 load; carried across it would
+// be a sixth of this scale, and nearly two full steps every time.
+export const STANDOUT_GAP = 1.5;
 export const STANDOUT_LIMIT = 3;
 
 // The tracked days a food eaten on `eatenDays` casts its shadow over, each once.
@@ -706,7 +746,7 @@ function shadowOf(eatenDays, days) {
   for (const d of eatenDays) {
     for (let k = 0; k < SHADOW_DAYS; k++) {
       const dd = addDays(d, k);
-      if (days.has(dd) && !shadow.has(dd)) shadow.set(dd, { day: dd, load: days.get(dd), eaten: false });
+      if (days.has(dd) && !shadow.has(dd)) shadow.set(dd, { day: dd, score: days.get(dd), eaten: false });
     }
   }
   for (const d of eatenDays) if (shadow.has(d)) shadow.get(d).eaten = true;
@@ -752,16 +792,16 @@ export function standingOut(state, { fromDay, today, who }) {
   const rows = [];
   for (const g of groups.values()) {
     const eaten = [...g.days.keys()].sort();
-    const dates = eaten.map((day) => ({ day, load: days.get(day) || 0, possible: g.days.get(day) }));
+    const dates = eaten.map((day) => ({ day, score: days.get(day) || 0, possible: g.days.get(day) }));
     const after = shadowOf(eaten, days);
     const shadowed = new Set(after.map((d) => d.day));
-    const notLoads = [...days].filter(([day]) => !shadowed.has(day)).map(([, load]) => load);
-    const avgAfter = avg(after.map((d) => d.load)), avgNot = avg(notLoads);
+    const notScores = [...days].filter(([day]) => !shadowed.has(day)).map(([, score]) => score);
+    const avgAfter = avg(after.map((d) => d.score)), avgNot = avg(notScores);
     // Each eating on its own: its day and the two after, against the days outside.
-    const heavier = eaten.filter((d) => avg(shadowOf([d], days).map((x) => x.load)) > avgNot).length;
+    const heavier = eaten.filter((d) => avg(shadowOf([d], days).map((x) => x.score)) > avgNot).length;
     rows.push({
       key: g.key, kind: g.kind, label: g.label, id: g.id, also: [], who,
-      eatenDays: dates.length, afterDays: after.length, notDays: notLoads.length, avgAfter, avgNot, gap: avgAfter - avgNot,
+      eatenDays: dates.length, afterDays: after.length, notDays: notScores.length, avgAfter, avgNot, gap: avgAfter - avgNot,
       heavier, dates, after,
     });
   }
@@ -788,11 +828,11 @@ export function standingOut(state, { fromDay, today, who }) {
 
 // ---- new foods -------------------------------------------------------------------
 // Foods eaten for the first time in range, from when symptom tracking began,
-// each with the symptom load of that day and the two after (the same shadow
+// each with the gut score of that day and the two after (the same shadow
 // as above) against the other days in range. An observation about one
 // occasion: never ranked, never part of what stands out. Safe foods are left
 // out here too; tags are not foods here.
-//   { key, kind, label, id?, day, load, next: [{ day, load (null when nothing was logged), pending }], otherDays, others }
+//   { key, kind, label, id?, day, score, next: [{ day, score (null when nothing was logged), pending }], otherDays, others }
 export function newFoods(state, { fromDay, today, who }) {
   const start = trackingStart(state);
   const from = start && start > fromDay ? start : fromDay;
@@ -812,11 +852,11 @@ export function newFoods(state, { fromDay, today, who }) {
     const next = [];
     for (let k = 1; k < SHADOW_DAYS; k++) {
       const d = addDays(f.day, k);
-      next.push({ day: d, load: days.has(d) ? days.get(d) : null, pending: d >= today });
+      next.push({ day: d, score: days.has(d) ? days.get(d) : null, pending: d >= today });
     }
     const span = new Set([f.day, ...next.map((n) => n.day)]);
-    const others = [...days].filter(([d]) => !span.has(d)).map(([, load]) => load);
-    out.push({ ...f, load: days.get(f.day) || 0, next, otherDays: others.length, others: avg(others) });
+    const others = [...days].filter(([d]) => !span.has(d)).map(([, score]) => score);
+    out.push({ ...f, score: days.get(f.day) || 0, next, otherDays: others.length, others: avg(others) });
   }
   return out.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : a.label.localeCompare(b.label)));
 }
@@ -842,11 +882,11 @@ export function trendDays(state, range, today) {
   return { fromDay, toDay: today };
 }
 
-// Daily load for the chart. Days before the diary's first entry are marked
+// Daily gut score for the chart. Days before the diary's first entry are marked
 // as having no data, so a new diary doesn't draw a flat line of false calm.
 export function trendSeries(state, fromDay, toDay) {
   const first = firstEntryDay(state);
-  return loadSeries(state.symptomLog, fromDay, toDay).map((d) => ({ ...d, hasData: first !== null && d.day >= first }));
+  return scoreSeries(state.symptomLog, fromDay, toDay).map((d) => ({ ...d, hasData: first !== null && d.day >= first }));
 }
 
 // A chart color slot per phase tag, in order of each tag's first phase. Colors

@@ -228,14 +228,19 @@ test('symptomFields derives stool severity and keeps only offered flags', () => 
     { cat: 'crying', severity: 2, flags: [], note: '' });
 });
 
-test('flag points: severity plus 2 for blood, 1 for mucus, 2 for hives', () => {
+test('gut score points: stool, gas, and spit-up carry their severity plus 2 for blood and 1 for mucus; nothing else carries any', () => {
   assert.equal(L.eventPoints(sym('a', '2026-09-05T08:00', 'stool', 2, ['blood', 'mucus'])), 5);
-  assert.equal(L.eventPoints(sym('b', '2026-09-05T08:00', 'skin', 1, ['hives'])), 3);
+  assert.equal(L.eventPoints(sym('b', '2026-09-05T08:00', 'skin', 1, ['hives'])), 0, 'skin and hives are logged, not scored');
   assert.equal(L.eventPoints(sym('c', '2026-09-05T08:00', 'stool', 0, ['blood'])), 2);
-  assert.equal(L.eventPoints(sym('d', '2026-09-05T08:00', 'other', 3)), 3);
+  assert.equal(L.eventPoints(sym('d', '2026-09-05T08:00', 'other', 3)), 0);
+  assert.equal(L.eventPoints(sym('e', '2026-09-05T08:00', 'crying', 3)), 0);
+  assert.equal(L.eventPoints(sym('f', '2026-09-05T08:00', 'resp', 3)), 0);
+  assert.equal(L.eventPoints(sym('g', '2026-09-05T08:00', 'gas', 2)), 2);
+  assert.equal(L.eventPoints(sym('h', '2026-09-05T08:00', 'spitup', 3)), 3);
+  assert.deepEqual([L.SCORE_CATS, L.SCORE_MAX, L.FLAG_POINTS], [['stool', 'gas', 'spitup'], 12, { blood: 2, mucus: 1 }]);
 });
 
-test('dayLoad takes the worst per category and counts each flag once a day', () => {
+test('dayScore: the worst stool, gas, and spit-up, plus blood and mucus once a day; skin and crying stay out', () => {
   const log = [
     sym('s1', '2026-09-05T07:00', 'stool', 2, ['blood']),
     sym('s2', '2026-09-05T15:00', 'stool', 3, ['blood', 'mucus']),
@@ -243,30 +248,54 @@ test('dayLoad takes the worst per category and counts each flag once a day', () 
     sym('s4', '2026-09-05T21:00', 'crying', 1),
     sym('s5', '2026-09-05T10:00', 'skin', 1, ['hives']),
     sym('s6', '2026-09-05T11:00', 'other', 3),
-    sym('s7', '2026-09-06T00:30', 'resp', 3),
+    sym('s7', '2026-09-05T12:00', 'gas', 1),
+    sym('s8', '2026-09-05T13:00', 'gas', 2),
+    sym('s9', '2026-09-06T00:30', 'resp', 3),
   ];
-  const d = L.dayLoad(log, '2026-09-05');
-  assert.deepEqual(d.cats, { crying: 2, spitup: 0, stool: 3, skin: 1, resp: 0, gas: 0 });
-  assert.deepEqual(d.flags, { blood: true, mucus: true, hives: true });
-  assert.equal(d.load, 6 + 5, '"other" does not count toward load');
-  assert.equal(L.dayLoad(log, '2026-09-07').load, 0);
-
-  const worst = ['crying', 'spitup', 'stool', 'skin', 'resp'].map((c, i) =>
-    sym(`w${i}`, '2026-09-08T12:00', c, 3, c === 'stool' ? ['blood', 'mucus'] : c === 'skin' ? ['hives'] : []));
-  assert.equal(L.dayLoad(worst, '2026-09-08').load, 20, 'maximum is 20');
+  const d = L.dayScore(log, '2026-09-05');
+  assert.deepEqual(d.cats, { crying: 2, spitup: 0, stool: 3, skin: 1, resp: 0, gas: 2 }, 'every category is tracked for the strips');
+  assert.deepEqual(d.flags, { blood: true, mucus: true, hives: true }, 'hives is tracked, to show, not to score');
+  assert.equal(d.score, 3 + 2 + 0 + 2 + 1, 'stool 3, gas 2, no spit-up, blood 2, mucus 1; crying, skin, hives, and other add nothing');
+  assert.equal(L.dayScore(log, '2026-09-06').score, 0, 'breathing alone scores zero');
+  assert.equal(L.dayScore(log, '2026-09-07').score, 0);
+  assert.equal(L.dayScore([sym('k', '2026-09-08T10:00', 'skin', 3, ['hives'])], '2026-09-08').score, 0, 'a day with only skin scores zero');
+  assert.equal(L.dayScore([sym('c', '2026-09-08T10:00', 'crying', 3)], '2026-09-08').score, 0, 'a day with only crying scores zero');
+  const worst = [sym('w1', '2026-09-09T12:00', 'stool', 3, ['blood', 'mucus'], { consistency: 'watery' }), sym('w2', '2026-09-09T12:00', 'gas', 3), sym('w3', '2026-09-09T12:00', 'spitup', 3),
+    sym('w4', '2026-09-09T12:00', 'crying', 3), sym('w5', '2026-09-09T12:00', 'skin', 3, ['hives']), sym('w6', '2026-09-09T12:00', 'resp', 3)];
+  assert.equal(L.dayScore(worst, '2026-09-09').score, 12, 'the most a day can score is 12');
 });
 
-test('gas is a symptom category, charted per day but not part of the load', () => {
+test('dayScoreParts: each point on the glance card traces to one entry, and the parts add up to the score', () => {
+  const log = [
+    sym('g1', '2026-09-05T08:00', 'gas', 1),
+    sym('g2', '2026-09-05T13:00', 'gas', 2),
+    sym('g3', '2026-09-05T18:00', 'gas', 2),              // ties go to the earliest
+    sym('t1', '2026-09-05T07:00', 'stool', 2, ['mucus'], { consistency: 'loose' }),
+    sym('t2', '2026-09-05T15:00', 'stool', 3, ['blood', 'mucus'], { consistency: 'watery' }),
+    sym('c1', '2026-09-05T09:00', 'crying', 3),
+    sym('k1', '2026-09-05T10:00', 'skin', 2, ['hives']),
+  ];
+  const p = L.dayScoreParts(log, '2026-09-05');
+  assert.deepEqual(p.parts.map((x) => [x.kind, x.cat || x.flag, x.points, x.eventId]),
+    [['cat', 'stool', 3, 't2'], ['cat', 'gas', 2, 'g2'], ['flag', 'blood', 2, 't2'], ['flag', 'mucus', 1, 't1']],
+    'the worst stool and gas entries, blood from the entry that carried it, mucus from the first; nothing for crying or skin');
+  assert.equal(p.score, L.dayScore(log, '2026-09-05').score);
+  assert.deepEqual(L.dayScoreParts([sym('c', '2026-09-06T10:00', 'crying', 3)], '2026-09-06'), { day: '2026-09-06', score: 0, parts: [] });
+  const formed = L.dayScoreParts([sym('f', '2026-09-07T10:00', 'stool', 0, ['blood'], { consistency: 'formed' })], '2026-09-07');
+  assert.deepEqual(formed.parts.map((x) => [x.kind, x.flag, x.points]), [['flag', 'blood', 2]], 'a formed stool with blood: the flag is the only part');
+});
+
+test('gas is a symptom category, in the gut score and charted per day', () => {
   assert.ok(L.SYMPTOM_CATS.includes('gas'));
-  assert.ok(!L.LOAD_CATS.includes('gas') && L.DAY_CATS.includes('gas'));
+  assert.ok(L.SCORE_CATS.includes('gas') && L.DAY_CATS.includes('gas'));
   assert.equal(L.symptomMissing({ cat: 'gas', severity: null }), 'severity');
   assert.deepEqual(L.symptomFields({ cat: 'gas', severity: 3, flags: ['blood'], color: 'red', count: 4 }),
     { cat: 'gas', severity: 3, flags: [], note: '' }, 'no flags, color, or count off a stool');
   const log = [sym('g1', '2026-09-05T08:00', 'gas', 3), sym('c1', '2026-09-05T09:00', 'crying', 1)];
-  const d = L.dayLoad(log, '2026-09-05');
+  const d = L.dayScore(log, '2026-09-05');
   assert.equal(d.cats.gas, 3);
-  assert.equal(d.load, 1, 'gas stays out of the 0 to 20 load');
-  assert.equal(L.eventPoints(log[0]), 3, 'but its points count after a food, like any symptom');
+  assert.equal(d.score, 3, 'gas is in the score; crying is not');
+  assert.equal(L.eventPoints(log[0]), 3);
 });
 
 test('stool color: stools only, no points, and a worrying color makes a formed stool loggable', () => {
@@ -281,7 +310,7 @@ test('stool color: stools only, no points, and a worrying color makes a formed s
     { cat: 'stool', severity: 1, flags: [], consistency: 'hard', color: 'black' }, 'a set keeps the color, not the count or note');
 });
 
-test('stool count: one entry for several diapers, shown in the daily load, scored as that many entries', () => {
+test('stool count: one entry for several diapers, shown beside the gut score, scored as that many entries after a food', () => {
   assert.equal('count' in L.symptomFields({ cat: 'stool', consistency: 'loose', count: 1 }), false, 'one is the default and is left off');
   assert.equal(L.symptomFields({ cat: 'stool', consistency: 'loose', count: 3 }).count, 3);
   assert.equal(L.symptomFields({ cat: 'stool', consistency: 'loose', count: 99 }).count, L.MAX_STOOL_COUNT);
@@ -291,12 +320,12 @@ test('stool count: one entry for several diapers, shown in the daily load, score
     sym('c', '2026-09-05T16:00', 'crying', 2, [], { count: 5 }),              // a count means nothing off a stool
     sym('d', '2026-09-06T08:00', 'stool', 1, [], { consistency: 'hard', count: 2 }),
   ];
-  const d = L.dayLoad(log, '2026-09-05');
+  const d = L.dayScore(log, '2026-09-05');
   assert.equal(d.stools, 4);
-  assert.equal(d.load, 3 + 2 + 1, 'the load still takes the worst stool once; the count shows beside it');
-  assert.deepEqual(L.loadSeries(log, '2026-09-05', '2026-09-07').map((x) => x.stools), [4, 2, 0]);
+  assert.equal(d.score, 3 + 1, 'the score still takes the worst stool once, plus mucus; the count shows beside it');
+  assert.deepEqual(L.scoreSeries(log, '2026-09-05', '2026-09-07').map((x) => x.stools), [4, 2, 0]);
   assert.equal(L.eventPoints(log[0]), 9, 'three loose stools with mucus score as three entries would');
-  assert.equal(L.eventPoints(log[2]), 2);
+  assert.equal(L.eventPoints(log[2]), 0);
   assert.equal(L.dayGlance(diary({ symptomLog: log }), '2026-09-05').stools, 4);
   const after = (log2) => L.symptomIndex(log2).between(L.tsMs('2026-09-02T06:00'), L.tsMs('2026-09-03T06:00')).points;
   assert.equal(after([sym('x', '2026-09-02T09:00', 'stool', 2, [], { consistency: 'loose', count: 3 })]),
@@ -346,7 +375,7 @@ test('phasesOnDay lists what was running that day with its day number then', () 
   assert.deepEqual(L.phasesOnDay([{ ...phase('2026-03-01T00:00'), id: 'p' }], '2026-03-15').map((x) => x.day), [15], 'spans DST');
 });
 
-test('dayGlance counts a day\'s entries and load', () => {
+test('dayGlance counts a day\'s entries and its gut score', () => {
   const s = diary({
     phases: [{ ...phase('2026-09-01T00:00'), id: 'p1' }],
     foodLog: [food('f1', '2026-09-12T08:00', ['wheat']), food('f2', '2026-09-12T19:00'), food('f3', '2026-09-11T19:00')],
@@ -357,8 +386,8 @@ test('dayGlance counts a day\'s entries and load', () => {
   });
   const g = L.dayGlance(s, '2026-09-12');
   assert.deepEqual({ ...g, phases: g.phases.map((x) => [x.phase.id, x.day]) },
-    { load: 5, stools: 1, entries: 4, food: 2, symptoms: 2, phases: [['p1', 12]] });
-  assert.deepEqual(L.dayGlance(diary(), '2026-09-12'), { load: 0, stools: 0, entries: 0, food: 0, symptoms: 0, phases: [] });
+    { score: 4, stools: 1, entries: 4, food: 2, symptoms: 2, phases: [['p1', 12]] }, 'loose stool 2 plus blood 2; the crying is an entry, not a point');
+  assert.deepEqual(L.dayGlance(diary(), '2026-09-12'), { score: 0, stools: 0, entries: 0, food: 0, symptoms: 0, phases: [] });
 });
 
 test('dayRest keeps symptom days plain and still, and reads the clock today', () => {
@@ -454,12 +483,12 @@ test('reintroduction watches tally points in the 72 hours after each exposure', 
   assert.equal(w.day, 4);
   assert.deepEqual(w.exposures.map((x) => [x.eventId, x.uncertain, x.points, x.count, x.watching]), [
     ['x2', true, 3, 1, true],
-    ['x1', false, 5, 2, true],
-  ]);
+    ['x1', false, 3, 2, true],
+  ], 'gut score points: the loose stool with mucus is 3; the crying entry is counted but worth nothing');
   assert.ok(near(w.exposures[0].hoursLeft, 54));
   assert.ok(near(w.exposures[1].hoursLeft, 6));
   const later = L.reintroWatches(s, '2026-09-16T12:00')[0].exposures;
-  assert.deepEqual(later.map((x) => [x.watching, x.points]), [[false, 3], [false, 5]]);
+  assert.deepEqual(later.map((x) => [x.watching, x.points]), [[false, 3], [false, 3]]);
   assert.deepEqual(L.reintroWatches(diary(), now), []);
 });
 
@@ -499,7 +528,7 @@ test('exposures, banners, and watches say who ate the food', () => {
       { ...food('b2', '2026-09-12T09:00', ['egg']), who: 'baby' },
       food('p2', '2026-09-11T09:00', ['egg']),
     ],
-    symptomLog: [sym('s1', '2026-09-12T11:00', 'skin', 2, ['hives'])],
+    symptomLog: [sym('s1', '2026-09-12T11:00', 'stool', 2, ['mucus'], { consistency: 'loose' })],
   });
   assert.deepEqual(L.exposuresOf(s.foodLog, 'dairy').map((x) => [x.event.id, x.who]), [['p1', 'parent'], ['b1', 'baby']]);
   assert.deepEqual(L.exposuresOf(s.foodLog, 'dairy', 'baby').map((x) => x.event.id), ['b1']);
@@ -507,7 +536,7 @@ test('exposures, banners, and watches say who ate the food', () => {
   assert.deepEqual(L.exposureBanners(s, now).map((b) => [b.key, b.who]), [['b1:dairy', 'baby'], ['p1:dairy', 'parent']],
     "the baby eating an eliminated food raises a banner too, labeled");
   const [w] = L.reintroWatches(s, now);
-  assert.deepEqual(w.exposures.map((x) => [x.eventId, x.who, x.points]), [['b2', 'baby', 4], ['p2', 'parent', 4]]);
+  assert.deepEqual(w.exposures.map((x) => [x.eventId, x.who, x.points]), [['b2', 'baby', 3], ['p2', 'parent', 3]]);
 });
 
 // ---- foods -------------------------------------------------------------------
@@ -741,10 +770,11 @@ test('where things stand: what is out and since when, and the days with entries 
 
 // A diary for the standing-out checks. Symptom tracking begins Sep 5 (16
 // tracked days, oatmeal every day). Eggs on Sep 6, 11, 16 (and Sep 2, before
-// tracking): a heavy day (load 5), then 3, then 1. Shrimp on Sep 7 and 8, two
-// days running. Rolls and weenies always together, on Sep 9, 14, 19. Almond
-// milk every fourth day. A sesame bar once. Coke zero typed the old way. The
-// other days are light (load 1 on Sep 5, 9, 14, 19) or quiet.
+// tracking): a bad day (gut score 5: watery stool and gas), then 3, then 1.
+// Shrimp on Sep 7 and 8, two days running. Rolls and weenies always together,
+// on Sep 9, 14, 19. Almond milk every fourth day. A sesame bar once. Coke zero
+// typed the old way. The other days are light (score 1 on Sep 5, 9, 14, 19)
+// or quiet.
 const day = (d) => `2026-09-${String(d).padStart(2, '0')}`;
 const item = (id, label, tags = []) => ({ id, label, tags, uncertain: [], useCount: 1, lastUsed: null, reviewed: true });
 const picked = (id, d, label, items, tags = [], h = '12:00') => ({ ...named(id, `${day(d)}T${h}`, label), items, tags });
@@ -753,11 +783,11 @@ function standoutDiary() {
   for (let d = 1; d <= 20; d++) foodLog.push(picked(`o${d}`, d, 'Oatmeal', ['oat'], ['oat'], '08:00'));
   for (const d of [2, 6, 11, 16]) foodLog.push(picked(`e${d}`, d, 'Eggs', ['egg'], ['egg']));
   for (const d of [6, 11, 16]) {
-    symptomLog.push(sym(`c${d}`, `${day(d)}T15:00`, 'crying', 3), sym(`k${d}`, `${day(d)}T16:00`, 'skin', 2));   // 5
-    symptomLog.push(sym(`n${d}`, `${day(d + 1)}T10:00`, 'crying', 3));                                        // 3 the next day
-    symptomLog.push(sym(`a${d}`, `${day(d + 2)}T10:00`, 'crying', 1));                                        // 1 the day after
+    symptomLog.push(sym(`c${d}`, `${day(d)}T15:00`, 'stool', 3, [], { consistency: 'watery' }), sym(`k${d}`, `${day(d)}T16:00`, 'gas', 2));   // 5
+    symptomLog.push(sym(`n${d}`, `${day(d + 1)}T10:00`, 'gas', 3));                                                                   // 3 the next day
+    symptomLog.push(sym(`a${d}`, `${day(d + 2)}T10:00`, 'spitup', 1));                                                                // 1 the day after
   }
-  for (const d of [5, 9, 14, 19]) symptomLog.push(sym(`q${d}`, `${day(d)}T09:00`, 'crying', 1));
+  for (const d of [5, 9, 14, 19]) symptomLog.push(sym(`q${d}`, `${day(d)}T09:00`, 'spitup', 1));
   for (const d of [7, 8]) foodLog.push(picked(`h${d}`, d, 'Shrimp', ['shrimp'], ['shellfish'], '19:00'));
   for (const d of [9, 14, 19]) foodLog.push(picked(`r${d}`, d, "Annie's rolls", ['rolls']), picked(`w${d}`, d, 'Mini weenies', ['weenies']));
   for (const d of [6, 10, 14, 18]) foodLog.push(picked(`m${d}`, d, 'Almond milk', ['almond'], [], '07:00'));
@@ -772,17 +802,17 @@ function standoutDiary() {
 const OPTS = { fromDay: '2026-09-01', today: '2026-09-20', who: 'parent' };
 const byLabel = (rows, label) => rows.find((x) => x.label === label);
 
-test('standing out: each eating is its day and the two after, against the tracked days outside, from the first symptom entry on', () => {
+test('standing out: each eating is its day and the two after, against the tracked days outside, by gut score, from the first symptom entry on', () => {
   const s = standoutDiary();
   const r = L.standingOut(s, OPTS);
   assert.deepEqual([r.trackingStart, r.from, r.loggedDays, r.enough], ['2026-09-05', '2026-09-05', 16, true], 'the range is clipped to when symptom tracking began');
   assert.equal(L.SHADOW_DAYS, 3);
   assert.deepEqual(r.standing.map((x) => x.label), ['egg']);
   const egg = r.standing[0];
-  assert.deepEqual(egg.dates.map((d) => [d.day, d.load]), [['2026-09-06', 5], ['2026-09-11', 5], ['2026-09-16', 5]], 'the eggs eaten on Sep 2, before any symptom was logged, are not a day eaten');
-  assert.deepEqual(egg.after.map((d) => [d.day.slice(8), d.load, d.eaten]),
+  assert.deepEqual(egg.dates.map((d) => [d.day, d.score]), [['2026-09-06', 5], ['2026-09-11', 5], ['2026-09-16', 5]], 'the eggs eaten on Sep 2, before any symptom was logged, are not a day eaten');
+  assert.deepEqual(egg.after.map((d) => [d.day.slice(8), d.score, d.eaten]),
     [['06', 5, true], ['07', 3, false], ['08', 1, false], ['11', 5, true], ['12', 3, false], ['13', 1, false], ['16', 5, true], ['17', 3, false], ['18', 1, false]],
-    'the day eaten and the two after, each with its load');
+    'the day eaten and the two after, each with its gut score');
   assert.deepEqual([egg.kind, egg.eatenDays, egg.afterDays, egg.notDays, egg.avgAfter, egg.heavier], ['tag', 3, 9, 7, 3, 3]);
   assert.ok(near(egg.avgNot, 4 / 7) && near(egg.gap, 3 - 4 / 7), 'the other days are Sep 5, 9, 10, 14, 15, 19, 20: four light, three quiet');
   assert.deepEqual(egg.also, [{ kind: 'food', label: 'Eggs', id: 'egg' }], 'the tag and the food, eaten on the same days, are one row');
@@ -809,11 +839,16 @@ test('standing out: each eating is its day and the two after, against the tracke
   const recentEgg = byLabel(recent.rows, 'egg');
   assert.deepEqual([recent.from, recent.loggedDays, recentEgg.eatenDays, recentEgg.afterDays, recentEgg.notDays, recent.standing], ['2026-09-10', 11, 2, 6, 5, []],
     'from Sep 10 the eggs have two days eaten: not enough');
-  // Symptoms on most days regardless: nothing separates, and that is the answer.
+  // Gut symptoms on most days regardless: nothing separates, and that is the answer.
   const heavy = [];
-  for (let d = 5; d <= 20; d++) heavy.push(sym(`x${d}`, `${day(d)}T11:00`, 'crying', 2), sym(`y${d}`, `${day(d)}T11:30`, 'skin', 2));
+  for (let d = 5; d <= 20; d++) heavy.push(sym(`x${d}`, `${day(d)}T11:00`, 'gas', 2), sym(`y${d}`, `${day(d)}T11:30`, 'spitup', 2));
   const even = L.standingOut({ ...s, symptomLog: [...s.symptomLog, ...heavy] }, OPTS);
-  assert.deepEqual([even.standing, even.compared], [[], 2], 'the egg days still average more, but not by two points');
+  assert.ok(near(even.rows.find((x) => x.label === 'egg').gap, 16 / 3 - 4), 'the egg days still average more (5.33 against 4)');
+  assert.deepEqual([even.standing, even.compared], [[], 2], 'but not by 1.5');
+  // Skin and crying alone move nothing: the same diary with those added everywhere reads the same.
+  const noise = [];
+  for (let d = 5; d <= 20; d++) noise.push(sym(`z${d}`, `${day(d)}T12:00`, 'crying', 3), sym(`v${d}`, `${day(d)}T12:30`, 'skin', 3, ['hives']));
+  assert.deepEqual(L.standingOut({ ...s, symptomLog: [...s.symptomLog, ...noise] }, OPTS).rows.map((x) => [x.label, x.avgAfter, x.avgNot]), r.rows.map((x) => [x.label, x.avgAfter, x.avgNot]));
   assert.deepEqual(L.standingOut(s, { ...OPTS, who: 'baby' }).rows, [], 'nothing eaten directly yet');
 });
 
@@ -821,15 +856,15 @@ test('standing out: one heavy stretch cannot carry a food; every eating has to b
   const foodLog = [], symptomLog = [];
   for (let d = 1; d <= 20; d++) foodLog.push(picked(`t${d}`, d, 'Toast', ['t'], [], '08:00'));
   for (const d of [9, 14, 19]) foodLog.push(picked(`p${d}`, d, 'Pepper', ['pep']));
-  symptomLog.push(sym('s5', `${day(5)}T09:00`, 'crying', 1));   // tracking begins Sep 5
-  for (const d of [9, 14]) symptomLog.push(sym(`b${d}`, `${day(d)}T15:00`, 'crying', 3), sym(`c${d}`, `${day(d)}T15:10`, 'spitup', 3), sym(`k${d}`, `${day(d)}T15:20`, 'skin', 3));   // 9
+  symptomLog.push(sym('s5', `${day(5)}T09:00`, 'crying', 1));   // tracking begins Sep 5 with any symptom, scored or not
+  for (const d of [9, 14]) symptomLog.push(sym(`b${d}`, `${day(d)}T15:00`, 'stool', 3, [], { consistency: 'watery' }), sym(`c${d}`, `${day(d)}T15:10`, 'spitup', 3), sym(`k${d}`, `${day(d)}T15:20`, 'gas', 3));   // 9
   const s = diary({ foodItems: [item('t', 'Toast'), item('pep', 'Pepper')], foodLog, symptomLog });
   const r = L.standingOut(s, OPTS);
   const pepper = byLabel(r.rows, 'Pepper');
-  assert.deepEqual([pepper.eatenDays, pepper.afterDays, pepper.notDays, pepper.heavier], [3, 8, 8, 2], 'Sep 19 and 20 were quiet: that eating is not heavier than the days outside');
-  assert.ok(pepper.gap >= L.STANDOUT_GAP, 'the two bad days lift the average past the gap on their own');
+  assert.deepEqual([pepper.eatenDays, pepper.afterDays, pepper.notDays, pepper.heavier], [3, 8, 8, 2], 'Sep 19 and 20 were quiet: that eating is not higher than the days outside');
+  assert.ok(pepper.gap >= L.STANDOUT_GAP && L.STANDOUT_GAP === 1.5, 'the two bad days lift the average past the gap on their own');
   assert.deepEqual([r.standing, r.compared], [[], 1], 'so pepper does not stand out');
-  const third = L.standingOut({ ...s, symptomLog: [...symptomLog, sym('s19', `${day(19)}T15:00`, 'crying', 1)] }, OPTS);
+  const third = L.standingOut({ ...s, symptomLog: [...symptomLog, sym('s19', `${day(19)}T15:00`, 'gas', 1)] }, OPTS);
   assert.deepEqual(third.standing.map((x) => [x.label, x.heavier]), [['Pepper', 3]], 'with the third stretch heavier too, it does');
   assert.equal(L.STANDOUT_MIN_EATEN, 3);
 });
@@ -877,19 +912,19 @@ test('safe foods and tags are hers alone: left out of the comparison, kept by re
 test('new foods: first eaten in range, from the first symptom entry on, with that day and the two after against the other days', () => {
   const s = standoutDiary();
   const list = L.newFoods(s, OPTS);
-  assert.deepEqual(list.map((n) => [n.label, n.day.slice(8), n.load, n.next.map((d) => d.load), n.otherDays]),
+  assert.deepEqual(list.map((n) => [n.label, n.day.slice(8), n.score, n.next.map((d) => d.score), n.otherDays]),
     [["Annie's rolls", '09', 1, [0, 5], 13], ['Mini weenies', '09', 1, [0, 5], 13], ['Sesame bar', '09', 1, [0, 5], 13], ['Shrimp', '07', 3, [1, 1], 13], ['Almond milk', '06', 5, [3, 1], 13]],
     'newest first; eggs, oatmeal, and coke zero were first eaten before tracking began, and tags are not foods here');
   assert.ok(near(list[2].others, (16 * 0 + 5 * 3 + 3 * 3 + 1 * 3 + 4 - 1 - 0 - 5) / 13), 'the other days leave out the three being described');
   assert.ok(list.every((n) => n.next.every((d) => !d.pending)));
   const late = L.newFoods({ ...s, foodItems: [...s.foodItems, item('pear', 'Pear'), item('plum', 'Plum')],
     foodLog: [...s.foodLog, picked('p19', 19, 'Pear', ['pear']), picked('p20', 20, 'Plum', ['plum'])] }, OPTS);
-  assert.deepEqual(late.slice(0, 2).map((n) => [n.label, n.next.map((d) => [d.pending, d.load])]), [['Plum', [[true, null], [true, null]]], ['Pear', [[true, 0], [true, null]]]],
+  assert.deepEqual(late.slice(0, 2).map((n) => [n.label, n.next.map((d) => [d.pending, d.score])]), [['Plum', [[true, null], [true, null]]], ['Pear', [[true, 0], [true, null]]]],
     'a day that is today or later is not over yet');
   const gap = L.newFoods(diary({ foodItems: [item('pear', 'Pear')],
     foodLog: [picked('p5', 5, 'Pear', ['pear']), picked('p9', 9, 'Pear', ['pear'])],
-    symptomLog: [sym('s5', `${day(5)}T15:00`, 'crying', 2), sym('s9', `${day(9)}T15:00`, 'crying', 1)] }), OPTS);
-  assert.deepEqual(gap.map((n) => [n.label, n.load, n.next.map((d) => [d.load, d.pending]), n.otherDays]), [['Pear', 2, [[null, false], [null, false]], 1]],
+    symptomLog: [sym('s5', `${day(5)}T15:00`, 'gas', 2), sym('s9', `${day(9)}T15:00`, 'gas', 1)] }), OPTS);
+  assert.deepEqual(gap.map((n) => [n.label, n.score, n.next.map((d) => [d.score, d.pending]), n.otherDays]), [['Pear', 2, [[null, false], [null, false]], 1]],
     'nothing logged on the two days after is said, not counted as quiet');
   assert.deepEqual(L.newFoods(s, { ...OPTS, who: 'baby' }), []);
   assert.deepEqual(L.newFoods(diary(), OPTS), []);
@@ -899,19 +934,19 @@ test('new foods: first eaten in range, from the first symptom entry on, with tha
 
 test('DST: days bucket by local date and series never skip or repeat a day', () => {
   const log = [
-    sym('a', '2026-03-08T01:30', 'crying', 1),
-    sym('b', '2026-03-08T23:30', 'crying', 3),
-    sym('c', '2026-11-01T01:30', 'skin', 2),
+    sym('a', '2026-03-08T01:30', 'gas', 1),
+    sym('b', '2026-03-08T23:30', 'gas', 3),
+    sym('c', '2026-11-01T01:30', 'spitup', 2),
   ];
-  assert.equal(L.dayLoad(log, '2026-03-08').load, 3);
-  assert.deepEqual(L.loadSeries(log, '2026-10-31', '2026-11-02').map((d) => [d.day, d.load]),
+  assert.equal(L.dayScore(log, '2026-03-08').score, 3);
+  assert.deepEqual(L.scoreSeries(log, '2026-10-31', '2026-11-02').map((d) => [d.day, d.score]),
     [['2026-10-31', 0], ['2026-11-01', 2], ['2026-11-02', 0]]);
-  assert.equal(L.loadSeries(log, '2026-03-01', '2026-03-31').length, 31);
+  assert.equal(L.scoreSeries(log, '2026-03-01', '2026-03-31').length, 31);
   assert.deepEqual([...L.bucketByDay(log).keys()], ['2026-03-08', '2026-11-01']);
 });
 
 test('DST: a 24h span after a time is 24 real hours across spring forward (the reintroduction watch counts this way)', () => {
-  const log = [sym('in', '2026-03-08T12:30', 'crying', 2), sym('edge', '2026-03-08T13:00', 'crying', 1), sym('out', '2026-03-08T13:30', 'crying', 4)];
+  const log = [sym('in', '2026-03-08T12:30', 'gas', 2), sym('edge', '2026-03-08T13:00', 'gas', 1), sym('out', '2026-03-08T13:30', 'gas', 4)];
   const from = L.tsMs('2026-03-07T12:00');
   assert.deepEqual(L.symptomIndex(log).between(from, from + 24 * 3600000), { points: 3, count: 2 });
 });
@@ -930,7 +965,7 @@ test('trendDays ends today and "all" starts at the first entry', () => {
 test('trendSeries marks days before the first entry as no data', () => {
   const s = diary({ symptomLog: [sym('s1', '2026-09-11T10:00', 'stool', 2, ['blood'])] });
   const series = L.trendSeries(s, '2026-09-09', '2026-09-12');
-  assert.deepEqual(series.map((d) => [d.day, d.hasData, d.load]), [
+  assert.deepEqual(series.map((d) => [d.day, d.hasData, d.score]), [
     ['2026-09-09', false, 0], ['2026-09-10', false, 0], ['2026-09-11', true, 4], ['2026-09-12', true, 0],
   ]);
 });

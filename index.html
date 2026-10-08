@@ -223,6 +223,12 @@ svg{display:block;flex:none}
 .glance-stats.three{grid-template-columns:1fr .8fr 1.4fr}
 .glance-num{display:block;font:700 26px/1.1 var(--round)}
 .glance-label{display:block;margin-top:2px;color:var(--ink2);font-size:14px}
+button.glance-stat{padding:0;text-align:left;color:inherit}
+button.glance-stat:active{opacity:.7}
+.glance-label svg{display:inline-block;width:14px;height:14px;margin-left:1px;vertical-align:-2px;color:var(--sym-ink)}
+.part-pts{flex:none;align-self:center;font:700 22px/1 var(--round);color:var(--sym-ink)}
+.entry{transition:background-color .25s ease}
+.entry.found{background:var(--sym-soft)}
 .day-rest{flex:1 1 0;min-height:0;overflow:hidden;display:flex;flex-direction:column;
   align-items:center;justify-content:center;gap:14px;text-align:center}
 .day-rest.has-line{min-height:56px}
@@ -438,7 +444,7 @@ svg{display:block;flex:none}
 .foot-hint:empty{display:none}
 
 /* ---- trends ------------------------------------------------------------------------
-   One series (daily load) in ink with a light wash; phases behind it as washes
+   One series (daily gut score) in ink with a light wash; phases behind it as washes
    in fixed palette slots; hairline grid; text always in text colors. */
 .filters{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 12px}
 .filters .chip{min-height:44px;padding:0 16px;font-size:16px}
@@ -695,7 +701,7 @@ import {
   allTags, tagLabel, tagState, cycleTag, sortPhases, isPhaseActive, phaseDay, phasesToClose,
   rankMeals, searchMeals, findMealByName, autoMealName,
   hasItems, itemResolver, resolveItems, itemTags, mealTags, findItemByLabel, pickableItems, mergeItem,
-  statusNow, standingOut, newFoods, trackingStart, STANDOUT_GAP, STANDOUT_MIN_EATEN,
+  statusNow, standingOut, newFoods, trackingStart, STANDOUT_GAP, STANDOUT_MIN_EATEN, dayScoreParts, SCORE_MAX,
   foodsToReview, foodReviewCard,
   symptomMissing, symptomFields, dayEntries, exposureBanners, pruneDismissed, reintroWatches,
   standaloneHeight, TREND_RANGES, daysBetween, slugify,
@@ -711,7 +717,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 23;
+const BUILD = 24;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -788,8 +794,8 @@ function whenLabel(ts) {
 
 // ---- symptom vocabulary ----------------------------------------------------------
 // Severity anchors are printed in the sheet so 1, 2 and 3 mean the same thing
-// every time. The categories follow the clinical cow's-milk ones, but the load
-// score built on them is this app's own.
+// every time. The categories follow the clinical cow's-milk ones, but the gut
+// score built on three of them is this app's own.
 const CATS = {
   crying: { label: 'Crying', anchors: ['Fussier than usual', 'One to three hours unexplained', 'Three-plus hours, or inconsolable'] },
   spitup: { label: 'Spit-up', anchors: ['More than usual', 'Frequent large spit-ups', 'Vomiting, or losing most of feeds'] },
@@ -1181,11 +1187,43 @@ function glanceHtml(day) {
     <h2 class="glance-name">${esc(S.babyName.trim() || 'Your baby')}</h2>
     ${phases ? `<div class="glance-phases">${phases}</div>` : ''}
     <div class="glance-stats${stools ? ' three' : ''}">
-      <p class="glance-stat" data-stat="load"><span class="glance-num">${g.load}</span><span class="glance-label">symptom load</span></p>
+      <button class="glance-stat" data-stat="score" data-act="score-parts" data-day="${esc(day)}" aria-label="${esc(`Gut score ${g.score}. Shows what made it up.`)}"><span class="glance-num" aria-hidden="true">${g.score}</span><span class="glance-label" aria-hidden="true">gut score ${ICON.right}</span></button>
       ${stools}
       <p class="glance-stat" data-stat="entries"><span class="glance-num">${g.entries}</span><span class="glance-label">${g.entries === 1 ? 'entry' : 'entries'}${detail}</span></p>
     </div>
   </section>`;
+}
+
+// What made up the day's gut score: one row per part, each a tap from the
+// entry behind it, so every point can be checked against the timeline.
+function openScoreSheet(day) {
+  const { score, parts } = dayScoreParts(S.symptomLog, day);
+  const byId = new Map(S.symptomLog.map((e) => [e.id, e]));
+  const partRow = (x) => {
+    const e = byId.get(x.eventId);
+    const when = e ? fmtTime(e.ts) : '';
+    const main = x.kind === 'cat' ? `${CATS[x.cat].label} ${x.points}` : FLAG_LABELS[x.flag];
+    const sub = x.kind === 'cat' ? `${e ? symptomName(e) : ''}${when ? `, ${when}` : ''}` : `on the ${when} stool`;
+    return `<button class="row" data-act="jump-entry" data-id="${esc(x.eventId)}"><span class="row-main">${esc(main)}<span class="row-sub">${esc(sub)}</span></span><span class="part-pts">+${x.points}</span></button>`;
+  };
+  openSheet({
+    title: `Gut score ${score}`,
+    body: `<p class="lede">${day === todayKey() ? "Today's" : `${esc(dayShort(day))}'s`} gut score adds up the worst stool, gas, and spit-up logged (0 to 3 each), plus 1 for mucus and 2 for blood. Tap a part to see its entry.</p>
+      ${parts.length ? `<div class="card rows">${parts.map(partRow).join('')}</div>` : '<p class="hint">No stool, gas, or spit-up logged this day.</p>'}
+      <p class="fine sect">Skin, crying, and breathing are logged and shown, but are not in the score.</p>`,
+    foot: '<button class="btn btn-primary" data-act="close-sheet" data-primary>Done</button>',
+    actions: { 'jump-entry': (b) => jumpToEntry(b.dataset.id) },
+  });
+}
+function jumpToEntry(id) {
+  closeSheet();
+  setTimeout(() => {
+    const el = $(`#view .entry[data-id="${CSS.escape(id)}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    el.classList.add('found');
+    setTimeout(() => el.classList.remove('found'), 1400);
+  }, 340);
 }
 
 // The mark in a day's leftover space steps aside once that space gets short.
@@ -1329,7 +1367,7 @@ function backupNudgeHtml() {
 }
 
 function pointsText(x) {
-  return x.count ? `${plural(x.points, 'symptom point')} from ${plural(x.count, 'entry', 'entries')}` : 'No symptoms logged';
+  return x.count ? `${plural(x.points, 'gut score point')} from ${plural(x.count, 'entry', 'entries')}` : 'No symptoms logged';
 }
 
 function watchHtml(w) {
@@ -1381,20 +1419,20 @@ function viewTrends() {
   return `
     ${rangeChipsHtml('trend-range', U.trendRange)}
     <section class="card chart-card">
-      <h2 class="chart-title">Symptom load</h2>
-      <p class="fine">Each day's total, from 0 to 20. Shaded bands are phases. Tap the chart for a day's details.</p>
+      <h2 class="chart-title">Gut score</h2>
+      <p class="fine">Each day's gut score, from 0 to 12: the worst stool, gas, and spit-up, plus 1 for mucus and 2 for blood. Shaded bands are phases. Tap the chart for a day's details.</p>
       ${loadChartHtml(series, bands, { interactive: true, draw: firstViewOfRange(U.trendRange) })}
       ${bandLegendHtml(bands)}
       ${loggedDays < 4 ? '<p class="hint">A few more days of logging will make the shape easier to read.</p>' : ''}
     </section>
     <section class="card chart-card">
       <h2 class="chart-title">By category</h2>
-      <p class="fine">The worst severity logged each day, from 0 to 3. Gas shows here but isn't part of the load.</p>
+      <p class="fine">The worst severity logged each day, from 0 to 3. Skin, crying, and breathing show here but are not in the gut score.</p>
       ${categoryStripHtml(series)}
     </section>
     ${answersHtml(fromDay)}
     <details class="card more-card"><summary>Daily numbers</summary>${dailyListHtml(series)}</details>
-    <p class="footnote">The categories follow the ones clinicians look at for cow's milk protein symptoms. The daily load is this app's own summary, not a clinical measure.</p>`;
+    <p class="footnote">The categories follow the ones clinicians look at for cow's milk protein symptoms. The gut score is this app's own summary of your entries, not a clinical measure.</p>`;
 }
 
 function dailyListHtml(series) {
@@ -1402,7 +1440,7 @@ function dailyListHtml(series) {
     const cats = DAY_CATS.filter((c) => d.cats[c]).map((c) => `${CATS[c].label.toLowerCase()} ${d.cats[c]}`);
     const flags = Object.keys(d.flags).filter((f) => d.flags[f]).map((f) => FLAG_LABELS[f].toLowerCase());
     const stools = d.stools ? `; ${plural(d.stools, 'stool')} logged` : '';
-    return `<li><b>${esc(dayShort(d.day))}</b>: load ${d.load}${cats.length ? `, ${cats.join(', ')}` : ''}${flags.length ? ` (${flags.join(', ')})` : ''}${stools}</li>`;
+    return `<li><b>${esc(dayShort(d.day))}</b>: gut score ${d.score}${cats.length ? `, ${cats.join(', ')}` : ''}${flags.length ? ` (${flags.join(', ')})` : ''}${stools}</li>`;
   }).join('');
   return rows ? `<ul class="plain days">${rows}</ul>` : '<p class="hint">No days logged in this range yet.</p>';
 }
@@ -1411,7 +1449,7 @@ function dailyListHtml(series) {
 // Four sections in plain counts, in this order: where things stand; is any food
 // standing out; which foods were new; what to raise at the next visit. Every
 // number is one she could check by scrolling her own timeline: days, dates, and
-// each day's load. No scores, no before-and-after, and nothing counted from
+// each day's gut score. No ratios, no before-and-after, and nothing counted from
 // before symptom tracking began. The report carries the same sentences.
 const PATHWAY_WORDS = { parent: () => 'What you ate', baby: () => `What ${babyLabel()} ate` };
 const PATHWAY_NOTE = { parent: () => 'Through breast milk.', baby: () => `Eaten by ${babyLabel()} directly.` };
@@ -1421,8 +1459,8 @@ const standLabel = (x) => (x.kind === 'tag' ? tagLabel(S.settings, x.label) : x.
 const rangeWords = (range) => (range === 'all' ? 'everything logged' : `the last ${RANGE_NAMES[range]}`);
 const safeFoods = () => liveFoods().filter((it) => it.safe).sort(byLabel);
 const safeTags = () => (S.settings.safeTags || []).map((t) => ({ id: t, label: tagLabel(S.settings, t) })).sort(byLabel);
-const CAUSE_NOTE = 'Heavier days with a food are not the same as the food causing them.';
-const STANDOUT_RULE = `A food is listed only when, for every time it was eaten, that day and the two after were heavier than the other days, by ${STANDOUT_GAP} points or more on average.`;
+const CAUSE_NOTE = 'A higher gut score around a food is not the same as the food causing it.';
+const STANDOUT_RULE = `A food is listed only when, for every time it was eaten, that day and the two after had a higher gut score than the other days, and by ${STANDOUT_GAP} or more on average.`;
 // A row's name: the food, or every name eaten on exactly the same days.
 const joinNames = (names) => (names.length <= 2 ? names.join(' and ') : `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`);
 function rowNames(r) { return [standLabel(r), ...r.also.map(standLabel)]; }
@@ -1450,9 +1488,9 @@ const statusList = (lines) => `<ul class="answers">${lines.map((l) => `<li>${esc
 
 // Anything standing out: a sentence per food, its days a tap away.
 function standoutText(r) {
-  return `${rowName(r)}: eaten on ${dayWord(r.eatenDays)}. Those days and the two after each add up to ${dayWord(r.afterDays)}, with symptom load averaging ${oneDp(r.avgAfter)}. On the other ${dayWord(r.notDays)}, ${oneDp(r.avgNot)}.`;
+  return `${rowName(r)}: eaten on ${dayWord(r.eatenDays)}. Those days and the two after each (${dayWord(r.afterDays)}) averaged a gut score of ${oneDp(r.avgAfter)}. The other ${dayWord(r.notDays)} averaged ${oneDp(r.avgNot)}.`;
 }
-const dayAndLoad = (d) => `${dayShort(d.day)} (load ${d.load}${d.possible ? ', possibly hidden' : ''})`;
+const dayAndLoad = (d) => `${dayShort(d.day)} (score ${d.score}${d.possible ? ', possibly hidden' : ''})`;
 function standoutDatesText(r) {
   const shadowOnly = r.after.filter((d) => !d.eaten);
   return [
@@ -1464,7 +1502,7 @@ function standoutDatesText(r) {
 function standoutEmpty(r, rangeName) {
   if (!r.enough) return `Not enough days logged yet to compare foods over ${rangeName}.`;
   if (!r.compared) return `No food could be compared over ${rangeName} yet.`;
-  return `No food stands out over ${rangeName}. No food's days were clearly heavier than the other days.`;
+  return `No food stands out over ${rangeName}. No food's days had a clearly higher gut score than the other days.`;
 }
 // The foods that could not be compared, as two lines with the names a tap away:
 // eaten too often or too evenly (the shadow covers nearly everything), and
@@ -1497,14 +1535,14 @@ function safeLineHtml() {
 const NEW_SHOWN = 6;
 const WHEN = ['the next day', 'the day after'];
 function newFoodText(n, rangeName) {
-  const known = [`${n.load} that day`], missing = [];
+  const known = [`${n.score} that day`], missing = [];
   let pending = '';
   n.next.forEach((d, i) => {
     if (d.pending) { if (!pending) pending = i === 0 ? 'The next two days are not over yet.' : 'The day after is not over yet.'; }
-    else if (d.load === null) missing.push(WHEN[i]);
-    else known.push(`${d.load} ${WHEN[i]}`);
+    else if (d.score === null) missing.push(WHEN[i]);
+    else known.push(`${d.score} ${WHEN[i]}`);
   });
-  const parts = [`Symptom load was ${joinNames(known)}.`];
+  const parts = [`Gut score was ${joinNames(known)}.`];
   if (missing.length) parts.push(`Nothing was logged ${missing.join(' or ')}.`);
   if (pending) parts.push(pending);
   if (n.otherDays) parts.push(`Other days over ${rangeName} averaged ${oneDp(n.others)}.`);
@@ -1522,7 +1560,7 @@ function newFoodsHtml(list, rangeName) {
 function visitLines(st, stands, range, rangeName) {
   const lines = statusLines(st, range);
   const found = stands.flatMap((r) => r.standing.map((row) =>
-    `${rowName(row)}${r.who === 'baby' ? ` (${babyLabel()}'s own food)` : ''}: the days after it averaged ${oneDp(row.avgAfter)}, the other days ${oneDp(row.avgNot)}`));
+    `${rowName(row)}${r.who === 'baby' ? ` (${babyLabel()}'s own food)` : ''}: its days averaged a gut score of ${oneDp(row.avgAfter)}, the other days ${oneDp(row.avgNot)}`));
   lines.push(found.length ? `Standing out over ${rangeName}: ${found.join('; ')}.` : standoutEmpty(stands[0], rangeName));
   return lines;
 }
@@ -1550,7 +1588,7 @@ function answersHtml(fromDay) {
     </section>
     <section class="card answer" data-answer="standing">
       <h2 class="chart-title">Anything standing out</h2>
-      <p class="fine">Each food's days against the other days, over ${esc(rangeName)}: the symptom load of the day it was eaten and the two after, on average, and of the days outside those. ${STANDOUT_RULE} Tap a food for its days. ${CAUSE_NOTE}</p>
+      <p class="fine">Each food's days against the other days, over ${esc(rangeName)}: the gut score of the day it was eaten and the two after, on average, and of the days outside those. ${STANDOUT_RULE} Tap a food for its days. ${CAUSE_NOTE}</p>
       ${stands.map((r) => pathway(r, standoutHtml(r, rangeName))).join('')}
       ${safeLineHtml()}
     </section>
@@ -1608,7 +1646,7 @@ function unmarkSafe(kind, id) {
 }
 
 // ---- charts ------------------------------------------------------------------------------
-// Inline SVG in a 340-unit-wide viewBox that scales to its card. The load
+// Inline SVG in a 340-unit-wide viewBox that scales to its card. The score
 // chart and the category strips share one x geometry, so their days line up.
 const CHART_W = 340;
 const PAD_L = 24;
@@ -1616,7 +1654,7 @@ const PAD_R = 12;
 const charts = new Map();   // interactive chart id -> its series, for the day readout
 let chartSeq = 0;
 
-// The load line draws itself in the first time each range is viewed this session.
+// The score line draws itself in the first time each range is viewed this session.
 const drawnRanges = new Set();
 function firstViewOfRange(range) {
   if (drawnRanges.has(range)) return false;
@@ -1649,8 +1687,8 @@ function loadChartHtml(series, bands, { interactive = false, draw = false } = {}
   const plotH = 128, bottom = top + plotH, H = bottom + 22;
   const trackH = plotH / Math.max(1, tracks.length);
   const logged = series.map((d, i) => [d, i]).filter(([d]) => d.hasData);
-  const peakLoad = Math.max(0, ...logged.map(([d]) => d.load));
-  const yMax = Math.min(20, Math.max(5, Math.ceil(peakLoad / 5) * 5));
+  const peak = Math.max(0, ...logged.map(([d]) => d.score));
+  const yMax = Math.min(SCORE_MAX, Math.max(4, Math.ceil(peak / 4) * 4));
   const y = (v) => bottom - (v / yMax) * plotH;
   const at = new Map(series.map((d, i) => [d.day, i]));
 
@@ -1698,14 +1736,14 @@ function loadChartHtml(series, bands, { interactive = false, draw = false } = {}
     }
     run = [];
   };
-  series.forEach((d, i) => { if (d.hasData) run.push([slotMid(n, i), y(d.load)]); else flush(); });
+  series.forEach((d, i) => { if (d.hasData) run.push([slotMid(n, i), y(d.score)]); else flush(); });
   flush();
 
   // Direct labels only where the story is: the latest day and the peak.
   let marks = '';
   if (logged.length) {
     const [last, li] = logged[logged.length - 1];
-    const [peak, pi] = logged.reduce((m, c) => (c[0].load > m[0].load ? c : m));
+    const [top1, pi] = logged.reduce((m, c) => (c[0].score > m[0].score ? c : m));
     // Above the point, or beside it when a spike reaches the top of the plot.
     const valueLabel = (x, v) => {
       const nearRight = x > CHART_W - PAD_R - 16;
@@ -1714,8 +1752,8 @@ function loadChartHtml(series, bands, { interactive = false, draw = false } = {}
       }
       return `<text class="value" x="${round1(nearRight ? x - 7 : x + 7)}" y="${round1(y(v) + 10)}" text-anchor="${nearRight ? 'end' : 'start'}">${v}</text>`;
     };
-    marks += `<circle class="dot" cx="${round1(slotMid(n, li))}" cy="${round1(y(last.load))}" r="4"/>${valueLabel(slotMid(n, li), last.load)}`;
-    if (pi !== li && peak.load > 0) marks += valueLabel(slotMid(n, pi), peak.load);
+    marks += `<circle class="dot" cx="${round1(slotMid(n, li))}" cy="${round1(y(last.score))}" r="4"/>${valueLabel(slotMid(n, li), last.score)}`;
+    if (pi !== li && top1.score > 0) marks += valueLabel(slotMid(n, pi), top1.score);
   }
 
   const ticks = n < 2 ? [0] : n < 8 ? [0, n - 1] : [0, Math.round((n - 1) / 2), n - 1];
@@ -1725,7 +1763,7 @@ function loadChartHtml(series, bands, { interactive = false, draw = false } = {}
   }).join('');
 
   if (interactive) charts.set(id, series);
-  const label = `Daily symptom load, ${dayShort(series[0].day)} to ${dayShort(series[n - 1].day)}`;
+  const label = `Daily gut score, ${dayShort(series[0].day)} to ${dayShort(series[n - 1].day)}`;
   return `<svg class="chart${draw ? ' draw' : ''}" id="${id}" viewBox="0 0 ${CHART_W} ${H}" role="img" aria-label="${esc(label)}"${interactive ? ' data-chart tabindex="0"' : ''}>`
     + `<defs>${[...patterns].join('')}</defs>${bandSvg}${grid}<path class="area" d="${area}"/><path class="line" pathLength="1" d="${line}"/>${marks}${xLabels}`
     + (interactive ? `<line class="cross" x1="0" x2="0" y1="${top}" y2="${bottom}" visibility="hidden"/>` : '')
@@ -1740,7 +1778,7 @@ function bandLegendHtml(bands) {
     `<span><i class="swatch${b.kind === 'reintroduce' ? ' hatch' : ''}" style="--sw:${bandColor(b.tag)}"></i>${esc(tagLabel(S.settings, b.tag))} ${b.kind === 'reintroduce' ? 'reintroduced' : 'eliminated'}</span>`).join('')}</div>`;
 }
 
-// Small multiples: one row per category, on the same days as the load chart.
+// Small multiples: one row per category, on the same days as the score chart.
 function categoryStripHtml(series) {
   const n = series.length, H = 24, base = H - 1;
   const w = Math.max(1, Math.min(24, slotWidth(n) - 2));   // 2 units of card between neighbors
@@ -1787,7 +1825,7 @@ function chartTip(svg, index) {
   if (!d.hasData) {
     add('Before the diary began', 'tip-value');
   } else {
-    add(`Load ${d.load}`, 'tip-value');
+    add(`Gut score ${d.score}`, 'tip-value');
     const cats = DAY_CATS.filter((c) => d.cats[c]).map((c) => `${CATS[c].label} ${d.cats[c]}`);
     const flags = Object.keys(d.flags).filter((f) => d.flags[f]).map((f) => FLAG_LABELS[f]);
     if (cats.length) add(cats.join(', '));
@@ -2037,8 +2075,8 @@ function reportHtml() {
       ${phaseRows ? table(['Food', 'Change', 'Started', 'Ended', 'Length', 'Note'], phaseRows) : '<p class="report-meta">No phases recorded.</p>'}
     </section>
     <section class="keep">
-      <h2>Daily symptom load</h2>
-      <p class="report-meta">Each day's total, 0 to 20: the worst severity (0 to 3) in each of crying, spit-up, stool, skin, and breathing, plus 2 for blood, 1 for mucus, and 2 for hives. Gas is logged but not counted. Shaded bands are phases.</p>
+      <h2>Daily gut score</h2>
+      <p class="report-meta">Each day's gut score, 0 to 12: the worst severity (0 to 3) in each of stool, gas, and spit-up, plus 2 for blood and 1 for mucus. Skin, crying, and breathing are logged but not scored. Shaded bands are phases.</p>
       ${loadChartHtml(series, bands)}
       ${bandLegendHtml(bands)}
     </section>
@@ -2048,7 +2086,7 @@ function reportHtml() {
     </section>
     <section class="keep">
       <h2>Anything standing out</h2>
-      <p class="report-meta">Each food's days against the other days, over this range, from when symptom tracking began: the daily symptom load of the day it was eaten and the two after, on average, and of the days outside those. ${STANDOUT_RULE} ${CAUSE_NOTE}</p>
+      <p class="report-meta">Each food's days against the other days, over this range, from when symptom tracking began: the gut score of the day it was eaten and the two after, on average, and of the days outside those. ${STANDOUT_RULE} ${CAUSE_NOTE}</p>
       ${stands.map((r) => `${stands.length > 1 ? `<h3>${esc(PATHWAY_WORDS[r.who]())}</h3>` : ''}${r.standing.length
         ? r.standing.map((row) => `<p class="standout-row">${esc(standoutText(row))}</p><p class="report-meta">${esc(standoutDatesText(row).join(' '))}</p>`).join('')
         : `<p class="report-meta">${esc(standoutEmpty(r, rangeName))}</p>`}${r.everyday.length ? `<p class="report-meta">${esc(everydayText(r, true))}</p>` : ''}${r.few.length ? `<p class="report-meta">${esc(fewText(r))}</p>` : ''}`).join('')}
@@ -3861,6 +3899,7 @@ const ACTIONS = {
   'day-next': () => pageDay(1),
   'day-today': () => { U.day = null; render(); },
   'trend-range': (el) => { U.trendRange = el.dataset.range; render(); },
+  'score-parts': (el) => openScoreSheet(el.dataset.day),
   'mark-safe': (el) => markSafe(el.dataset.keys),
   'unmark-safe': (el) => unmarkSafe(el.dataset.kind, el.dataset.id),
   'open-report': () => showReport(),

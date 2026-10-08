@@ -23,7 +23,8 @@ own files so it works offline; the diary itself lives only in localStorage.
 
 - **Today:** a glance card at the top of each day shows the baby's name, each
   phase running that day with its day number (tap to open Phases), and the
-  day's symptom load and entry count; past days show their own picture.
+  day's gut score (tap it for what made it up, each part a tap from its
+  entry) and entry count; past days show their own picture.
   `+ food` and `+ symptom` sit on every tab. A saved meal logs in two taps, a
   loose diaper in four. Several symptoms can be picked in one pass: each
   category expands under the grid, and one Log saves them as separate entries
@@ -34,9 +35,16 @@ own files so it works offline; the diary itself lives only in localStorage.
   edit or delete it; arrows, the date, or a swipe change the day. Every
   entry's time can be backdated.
 - **Symptoms:** crying, spit-up, stool, gas, skin, breathing, and other. Gas
-  (bloating, straining, painful wind) has its own 1 to 3 anchors; it counts
-  as a symptom following a food like any other, but stays out of the 0 to 20
-  load, which keeps its five clinical categories. A stool entry can stand for several
+  (bloating, straining, painful wind) has its own 1 to 3 anchors. The number
+  everywhere is the **gut score**, 0 to 12 per day: the worst stool, the
+  worst gas, and the worst spit-up (0 to 3 each), plus 1 if mucus appeared
+  and 2 if blood did. It weights the symptoms she trusts: for non-IgE milk
+  and soy protein reactions the gut is the hallmark, skin is confounded by
+  teething and the cats, and crying could be anything. Skin, crying, and
+  breathing stay logged, in the category strips, on the timeline, and in the
+  report, but are not in the score. The score is recomputed from existing
+  entries, so a diary from before build 24 re-reads under this definition
+  and nothing is lost. A stool entry can stand for several
   alike diapers (a count, default one), and the glance card and daily numbers
   show the day's stools. A stool can also carry an optional color, picked from
   a color card laid out the way the infant stool colour cards used in newborn
@@ -66,14 +74,14 @@ own files so it works offline; the diary itself lives only in localStorage.
   at the top, defaulting to the parent and naming the baby; the meal library
   and foods are shared. Baby entries carry a small name pill on Today. Exposure banners
   and the reintroduction watch fire for both pathways and say who ate the food.
-- **Trends:** the symptom load chart with one track per phase food behind
+- **Trends:** the gut score chart with one track per phase food behind
   the line, the per-category strips, and then four answers in plain counts,
   in this order. **Where things stand**: what is out (and back) right now and
   since when, with the day number, then how the range went in her own terms:
   how many days have entries and on how many of them a symptom was logged. No
   averages, no before-and-after; eliminations are standing constraints, not
   experiments the app grades. **Anything standing out**: each food's days
-  against the other days, by daily symptom load, counted only from the
+  against the other days, by daily gut score, counted only from the
   first symptom entry on (`trackingStart`): days before symptom tracking
   began hold food but say nothing about symptoms, and days with nothing
   logged count for neither side. Food proteins reach the milk within hours,
@@ -86,13 +94,14 @@ own files so it works offline; the diary itself lives only in localStorage.
   nearly everything), and how many foods have not been eaten on 3 separate
   days yet. Every food is in exactly one of the three groups. A food is listed only
   when, for every time it was eaten, its three days were heavier than the
-  other days, and by 2 load points or more on average overall; at most three
-  per pathway, each one sentence, with its days (and each day's load) a tap
+  other days, and by 1.5 or more on average overall (the score's smallest
+  step is 1, so 1.5 asks for more than any single one-step change); at most
+  three per pathway, each one sentence, with its days (and each day's score) a tap
   away. Names eaten on exactly the same days (a tag and its food, or two
   foods always eaten together) are one row naming both. The rule is fixed,
   not tuned to make rows appear: on most diaries nothing stands out, and
   that is written as a real answer. **New foods**: foods eaten for the first
-  time in range, each with the load of that day and the two after against
+  time in range, each with the gut score of that day and the two after against
   the other days; one occasion each, never ranked, never fed into the
   standing-out list. **For the next visit**: where things stand plus the
   standing-out answer, as lines to read aloud to the pediatrician; the report
@@ -147,7 +156,7 @@ own files so it works offline; the diary itself lives only in localStorage.
 | File | What it is |
 | --- | --- |
 | `index.html` | The whole app: markup, styles, UI code |
-| `logic.js` | Pure computation shared by the browser and the tests: time and day math, phases, meals, foods and tags, symptom load and stool counts, the Trends answers (where things stand, foods standing out by day loads from the first symptom entry on, new foods), the v1 to v2 migration, trends ranges, backups (reading, checking, merging, including symptom sets), the backup reminder, and which mark a quiet day shows |
+| `logic.js` | Pure computation shared by the browser and the tests: time and day math, phases, meals, foods and tags, the gut score and stool counts, the Trends answers (where things stand, foods standing out by day loads from the first symptom entry on, new foods), the v1 to v2 migration, trends ranges, backups (reading, checking, merging, including symptom sets), the backup reminder, and which mark a quiet day shows |
 | `logic.test.js` | Tests for `logic.js` |
 | `sw.js` | Cache-first service worker for the app shell |
 | `manifest.json` | PWA manifest |
