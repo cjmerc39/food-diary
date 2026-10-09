@@ -28,11 +28,17 @@ export const STARTER_TAGS = [
   { id: 'treenut', label: 'Tree nuts' },
   { id: 'fish', label: 'Fish' },
   { id: 'shellfish', label: 'Shellfish' },
+  { id: 'sesame', label: 'Sesame' },
   { id: 'citrus', label: 'Citrus' },
   { id: 'strawberry', label: 'Strawberry' },
   { id: 'chocolate', label: 'Chocolate' },
 ];
 const STARTER_IDS = new Set(STARTER_TAGS.map((t) => t.id));
+// The nine major allergens in US labeling law (sesame since 2023). A first
+// exposure to one is called out in New foods because prior knowledge is the
+// reason to look. Nothing joins this list for being eaten often: frequency
+// is a reason a food cannot be analyzed, not a reason to suspect it.
+export const MAJOR_ALLERGENS = ['dairy', 'egg', 'fish', 'shellfish', 'treenut', 'peanut', 'wheat', 'soy', 'sesame'];
 
 const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
 const HOUR = 3600000;
@@ -918,14 +924,17 @@ export function standingOut(state, { fromDay, today, who }) {
 // each with the gut score of that day and the two after (the same shadow
 // as above) against the other days in range. An observation about one
 // occasion: never ranked, never part of what stands out. Safe foods are left
-// out here too; tags are not foods here.
-//   { key, kind, label, id?, day, score, next: [{ day, score (null when nothing was logged), pending }], otherDays, others }
+// out here too; tags are not foods here. A food carrying a major allergen tag
+// names it (`major`) and sorts to the top: a notice, not a finding, claiming
+// nothing and changing no threshold.
+//   { key, kind, label, id?, day, major: [tagId], score, next: [{ day, score (null when nothing was logged), pending }], otherDays, others }
 export function newFoods(state, { fromDay, today, who }) {
   const start = trackingStart(state);
   const from = start && start > fromDay ? start : fromDay;
   if (!start || from > today) return [];
   const days = loggedDays(state, from, today);
   const safeTags = safeTagsOf(state);
+  const resolve = itemResolver(state.foodItems);
   const firstDay = new Map();
   const log = state.foodLog.filter((e) => isTs(e.ts) && eventWho(e) === who).sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
   for (const e of log) {
@@ -943,9 +952,11 @@ export function newFoods(state, { fromDay, today, who }) {
     }
     const span = new Set([f.day, ...next.map((n) => n.day)]);
     const others = [...days].filter(([d]) => !span.has(d)).map(([, score]) => score);
-    out.push({ ...f, score: days.get(f.day) || 0, next, otherDays: others.length, others: avg(others) });
+    const it = f.kind === 'food' ? resolve(f.id) : null;
+    const major = MAJOR_ALLERGENS.filter((t) => it && (it.tags || []).includes(t));
+    out.push({ ...f, major, score: days.get(f.day) || 0, next, otherDays: others.length, others: avg(others) });
   }
-  return out.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : a.label.localeCompare(b.label)));
+  return out.sort((a, b) => (b.major.length > 0) - (a.major.length > 0) || (a.day < b.day ? 1 : a.day > b.day ? -1 : a.label.localeCompare(b.label)));
 }
 
 // ---- trends and report -------------------------------------------------------

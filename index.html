@@ -726,7 +726,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 27;
+const BUILD = 28;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -1621,13 +1621,15 @@ function newFoodText(n, rangeName) {
   if (missing.length) parts.push(`Nothing was logged ${missing.join(' or ')}.`);
   if (pending) parts.push(pending);
   if (n.otherDays) parts.push(`Other days over ${rangeName} averaged ${oneDp(n.others)}.`);
-  return `${n.label}: first eaten on ${dayShort(n.day)}. ${parts.join(' ')}`;
+  const majors = n.major.map((t) => tagLabel(S.settings, t));
+  const notice = majors.length ? `${joinNames(majors)} ${majors.length === 1 ? 'is a major allergen' : 'are major allergens'}. ` : '';
+  return `${n.label}: first eaten on ${dayShort(n.day)}. ${notice}${parts.join(' ')}`;
 }
 function newFoodsHtml(list, rangeName) {
   if (!trackingStart(S)) return '<p class="hint newfood-none">No symptoms logged yet.</p>';
   if (!list.length) return `<p class="hint newfood-none">No food was eaten for the first time over ${esc(rangeName)}.</p>`;
   const shown = list.slice(0, NEW_SHOWN);
-  return `<ul class="newfoods">${shown.map((n) => `<li data-key="${esc(n.key)}">${esc(newFoodText(n, rangeName))}</li>`).join('')}</ul>`
+  return `<ul class="newfoods">${shown.map((n) => `<li data-key="${esc(n.key)}"${n.major.length ? ` class="major" data-major="${esc(n.major.join(' '))}"` : ''}>${esc(newFoodText(n, rangeName))}</li>`).join('')}</ul>`
     + (list.length > shown.length ? `<p class="hint">${plural(list.length - shown.length, 'more food')} ${list.length - shown.length === 1 ? 'was' : 'were'} first eaten earlier over ${esc(rangeName)}.</p>` : '');
 }
 
@@ -1674,7 +1676,7 @@ function answersHtml(fromDay) {
     </section>
     <section class="card answer" data-answer="new">
       <h2 class="chart-title">New foods</h2>
-      <p class="fine">Foods eaten for the first time over ${esc(rangeName)}, and how that day and the two after went. One occasion each, so nothing is ranked here.</p>
+      <p class="fine">Foods eaten for the first time over ${esc(rangeName)}, and how that day and the two after went. One occasion each, so nothing is ranked here. A food carrying a major allergen is named and listed first: a notice, not a finding.</p>
       ${fresh.map((r) => pathway(r, newFoodsHtml(r.list, rangeName))).join('')}
     </section>
     <section class="card answer" data-answer="visit">
@@ -2183,7 +2185,7 @@ function reportHtml() {
     </section>
     <section class="keep">
       <h2>New foods</h2>
-      <p class="report-meta">Foods eaten for the first time in this range, and how that day and the two after went. One occasion each; nothing is ranked.</p>
+      <p class="report-meta">Foods eaten for the first time in this range, and how that day and the two after went. One occasion each; nothing is ranked. A food carrying a major allergen is named and listed first, as a notice, not a finding.</p>
       ${fresh.map((r) => `${fresh.length > 1 ? `<h3>${esc(PATHWAY_WORDS[r.who]())}</h3>` : ''}${newFoodsHtml(r.list, rangeName)}`).join('')}
     </section>
     <section class="keep">
@@ -2375,7 +2377,7 @@ function openTagsSheet() {
     body: `<p class="lede">Switch a tag off to hide it from the pickers; past entries keep it. Tags you've used can be hidden, not deleted.</p>
       <div class="sect addtag">
         <label><span class="sect-label">Add your own</span>
-          <input class="input" type="text" data-field="newtag" maxlength="30" autocomplete="off" enterkeyhint="done" placeholder="For example, sesame"></label>
+          <input class="input" type="text" data-field="newtag" maxlength="30" autocomplete="off" enterkeyhint="done" placeholder="For example, millet"></label>
         <button class="btn" data-act="tag-add">Add</button>
       </div>
       <p class="hint" data-region="tag-error" role="alert"></p>

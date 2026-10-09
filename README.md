@@ -59,7 +59,10 @@ own files so it works offline; the diary itself lives only in localStorage.
   and text with no match can be added as a new food, its allergen chips right
   there. The field never grabs the keyboard on open, and while it has focus
   the sheet stands tall so the list sits above the keyboard. Allergens belong
-  to foods; a saved meal's come from its foods. Each entry snapshots its
+  to foods; a saved meal's come from its foods. The starter allergen list
+  carries the nine US major allergens, sesame among them (required on labels
+  since 2023), plus oat, corn, citrus, strawberry, and chocolate; existing
+  foods are untouched when a tag is added, she tags them herself. Each entry snapshots its
   allergens when logged, and can be adjusted for that entry alone. More >
   Foods lists every food with its allergens and use count, the ones to review
   first; each can be renamed, retagged, hidden from the picker, or merged into
@@ -129,7 +132,12 @@ own files so it works offline; the diary itself lives only in localStorage.
   empty only when no food can be compared at all. **New foods**: foods eaten for the first
   time in range, each with the gut score of that day and the two after against
   the other days; one occasion each, never ranked, never fed into the
-  standing-out list. **For the next visit**: where things stand plus the
+  standing-out list. A food carrying one of the nine major allergens in US
+  labeling law (dairy, egg, fish, shellfish, tree nuts, peanut, wheat, soy,
+  sesame) names it in its row and sorts to the top: a notice, not a finding,
+  claiming nothing and changing no threshold. No allergen joins that list for
+  being eaten often; frequency is a reason a food cannot be analyzed, not a
+  reason to suspect it. **For the next visit**: where things stand plus the
   standing-out answer, as lines to read aloud to the pediatrician; the report
   carries the identical lines. No multiples, ratios, scores, confidence
   labels, or statistical words anywhere, and no advice on what to eliminate

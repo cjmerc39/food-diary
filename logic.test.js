@@ -137,18 +137,28 @@ test('allTags lists starters then customs, and hidden tags stay resolvable', () 
     hiddenTags: ['corn', 'millet'],
   };
   const tags = L.allTags(settings);
-  assert.equal(tags.length, 14);
+  assert.equal(tags.length, 15);
   assert.deepEqual(tags[0], { id: 'dairy', label: 'Dairy', hidden: false });
-  assert.deepEqual(tags[13], { id: 'millet', label: 'Millet', hidden: true });
+  assert.deepEqual(tags[14], { id: 'millet', label: 'Millet', hidden: true });
   assert.equal(tags.find((t) => t.id === 'corn').hidden, true);
   assert.equal(L.tagLabel(settings, 'millet'), 'Millet');
   assert.equal(L.tagLabel(settings, 'mystery'), 'mystery');
-  assert.equal(L.allTags(undefined).length, 13);
+  assert.equal(L.allTags(undefined).length, 14);
 });
 
-test('starter vocabulary includes oat', () => {
+test('starter vocabulary: oat, and sesame as the ninth US major allergen; the major nine are named', () => {
   assert.deepEqual(L.STARTER_TAGS.find((t) => t.id === 'oat'), { id: 'oat', label: 'Oat' });
+  assert.deepEqual(L.STARTER_TAGS.find((t) => t.id === 'sesame'), { id: 'sesame', label: 'Sesame' });
+  assert.ok(L.STARTER_TAGS.findIndex((t) => t.id === 'sesame') === L.STARTER_TAGS.findIndex((t) => t.id === 'shellfish') + 1, 'with the other major allergens, before the minor ones');
   assert.equal(new Set(L.STARTER_TAGS.map((t) => t.id)).size, L.STARTER_TAGS.length, 'ids are unique');
+  assert.deepEqual(L.MAJOR_ALLERGENS, ['dairy', 'egg', 'fish', 'shellfish', 'treenut', 'peanut', 'wheat', 'soy', 'sesame']);
+  assert.ok(L.MAJOR_ALLERGENS.every((id) => L.STARTER_TAGS.some((t) => t.id === id)));
+  assert.ok(['oat', 'corn', 'citrus', 'strawberry', 'chocolate'].every((id) => !L.MAJOR_ALLERGENS.includes(id)), 'nothing joins for being eaten often');
+  // A custom "Sesame" tag from before: the starter takes over the id, history keeps resolving, and no duplicate is offered.
+  const before = { customTags: [{ id: 'sesame', label: 'Sesame seeds' }], hiddenTags: [] };
+  assert.deepEqual(L.allTags(before).filter((t) => t.id === 'sesame'), [{ id: 'sesame', label: 'Sesame', hidden: false }]);
+  assert.equal(L.tagLabel(before, 'sesame'), 'Sesame');
+  assert.ok(L.addCustomTag(L.freshState().settings, 'Sesame').error, 'sesame is already on the list');
 });
 
 test('standaloneHeight trusts the screen when running full screen, else the window', () => {
@@ -975,7 +985,7 @@ test('safe foods and tags are hers alone: left out of the comparison, kept by re
   const r2 = L.standingOut(safeBoth, OPTS);
   assert.deepEqual([r2.standing, r2.rows.map((x) => x.label), r2.compared, r2.everyday.length, r2.few.length], [[], ['oat', 'shellfish', 'Almond milk', "Annie's rolls", 'Sesame bar', 'Coke zero'], 1, 2, 3]);
   assert.deepEqual(L.newFoods({ ...s, foodItems: s.foodItems.map((it) => (it.id === 'ses' ? { ...it, safe: true } : it)) }, OPTS).map((n) => n.label),
-    ["Annie's rolls", 'Mini weenies', 'Shrimp', 'Almond milk'], 'safe foods are left out of new foods too');
+    ['Shrimp', "Annie's rolls", 'Mini weenies', 'Almond milk'], 'safe foods are left out of new foods too');
   // Restore keeps a true flag and drops anything else; merge unions the tags.
   const file = {
     ...L.freshState(), v: 2, onboarded: true, settings: { ...L.freshState().settings, safeTags: ['egg', '<b>'] },
@@ -994,14 +1004,22 @@ test('safe foods and tags are hers alone: left out of the comparison, kept by re
 test('new foods: first eaten in range, from the first symptom entry on, with that day and the two after against the other days', () => {
   const s = standoutDiary();
   const list = L.newFoods(s, OPTS);
-  assert.deepEqual(list.map((n) => [n.label, n.day.slice(8), n.score, n.next.map((d) => d.score), n.otherDays]),
-    [["Annie's rolls", '09', 1, [0, 5], 13], ['Mini weenies', '09', 1, [0, 5], 13], ['Sesame bar', '09', 1, [0, 5], 13], ['Shrimp', '07', 3, [1, 1], 13], ['Almond milk', '06', 5, [3, 1], 13]],
-    'newest first; eggs, oatmeal, and coke zero were first eaten before tracking began, and tags are not foods here');
-  assert.ok(near(list[2].others, (16 * 0 + 5 * 3 + 3 * 3 + 1 * 3 + 4 - 1 - 0 - 5) / 13), 'the other days leave out the three being described');
+  assert.deepEqual(list.map((n) => [n.label, n.day.slice(8), n.major, n.score, n.next.map((d) => d.score), n.otherDays]),
+    [['Shrimp', '07', ['shellfish'], 3, [1, 1], 13], ["Annie's rolls", '09', [], 1, [0, 5], 13], ['Mini weenies', '09', [], 1, [0, 5], 13], ['Sesame bar', '09', [], 1, [0, 5], 13], ['Almond milk', '06', [], 5, [3, 1], 13]],
+    'a first exposure to a major allergen first, then newest first; eggs, oatmeal, and coke zero were first eaten before tracking began, and tags are not foods here');
+  // The notice names the allergen and sorts first; it changes nothing else.
+  const tahini = L.newFoods({ ...s, foodItems: [...s.foodItems, item('tahini', 'Tahini', ['sesame']), item('et', 'Egg toast', ['egg', 'wheat'])],
+    foodLog: [...s.foodLog, picked('th8', 8, 'Tahini', ['tahini'], ['sesame']), picked('et10', 10, 'Egg toast', ['et'], ['egg', 'wheat'])] }, OPTS);
+  assert.deepEqual(tahini.slice(0, 3).map((n) => [n.label, n.day.slice(8), n.major]), [['Egg toast', '10', ['egg', 'wheat']], ['Tahini', '08', ['sesame']], ['Shrimp', '07', ['shellfish']]],
+    'major allergens first, newest first among them, in the list order of the nine');
+  assert.ok(tahini.slice(3).every((n) => !n.major.length) && tahini.find((n) => n.label === 'Tahini').score === 1, 'the rest follow; the numbers are the same plain counts');
+  assert.deepEqual(L.standingOut({ ...s, foodItems: [...s.foodItems, item('tahini', 'Tahini', ['sesame'])], foodLog: [...s.foodLog, picked('th8', 8, 'Tahini', ['tahini'], ['sesame'])] }, OPTS).top.map((x) => x.label),
+    ['egg', "Annie's rolls"], 'the notice does not enter the standing-out list or move any threshold');
+  assert.ok(near(list.find((n) => n.label === 'Sesame bar').others, (16 * 0 + 5 * 3 + 3 * 3 + 1 * 3 + 4 - 1 - 0 - 5) / 13), 'the other days leave out the three being described');
   assert.ok(list.every((n) => n.next.every((d) => !d.pending)));
   const late = L.newFoods({ ...s, foodItems: [...s.foodItems, item('pear', 'Pear'), item('plum', 'Plum')],
     foodLog: [...s.foodLog, picked('p19', 19, 'Pear', ['pear']), picked('p20', 20, 'Plum', ['plum'])] }, OPTS);
-  assert.deepEqual(late.slice(0, 2).map((n) => [n.label, n.next.map((d) => [d.pending, d.score])]), [['Plum', [[true, null], [true, null]]], ['Pear', [[true, 0], [true, null]]]],
+  assert.deepEqual(late.filter((n) => ['Plum', 'Pear'].includes(n.label)).map((n) => [n.label, n.next.map((d) => [d.pending, d.score])]), [['Plum', [[true, null], [true, null]]], ['Pear', [[true, 0], [true, null]]]],
     'a day that is today or later is not over yet');
   const gap = L.newFoods(diary({ foodItems: [item('pear', 'Pear')],
     foodLog: [picked('p5', 5, 'Pear', ['pear']), picked('p9', 9, 'Pear', ['pear'])],
