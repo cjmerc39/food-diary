@@ -1015,6 +1015,11 @@ test('new foods: first eaten in range, from the first symptom entry on, with tha
   assert.ok(tahini.slice(3).every((n) => !n.major.length) && tahini.find((n) => n.label === 'Tahini').score === 1, 'the rest follow; the numbers are the same plain counts');
   assert.deepEqual(L.standingOut({ ...s, foodItems: [...s.foodItems, item('tahini', 'Tahini', ['sesame'])], foodLog: [...s.foodLog, picked('th8', 8, 'Tahini', ['tahini'], ['sesame'])] }, OPTS).top.map((x) => x.label),
     ['egg', "Annie's rolls"], 'the notice does not enter the standing-out list or move any threshold');
+  // Tagging a food later is enough: the notice reads the food's tags today, not the entry's snapshot.
+  const taggedLater = L.newFoods({ ...s, foodItems: s.foodItems.map((it) => (it.id === 'ses' ? { ...it, tags: ['sesame'] } : it)) }, OPTS);
+  assert.deepEqual(taggedLater.slice(0, 2).map((n) => [n.label, n.day.slice(8), n.major, n.score]), [['Sesame bar', '09', ['sesame'], 1], ['Shrimp', '07', ['shellfish'], 3]],
+    'the sesame bar, eaten on Sep 9 with no tag at the time, is a sesame notice once the food carries the tag, and sorts first');
+  assert.deepEqual(list.find((n) => n.label === 'Sesame bar').major, [], 'and without the tag it is not');
   assert.ok(near(list.find((n) => n.label === 'Sesame bar').others, (16 * 0 + 5 * 3 + 3 * 3 + 1 * 3 + 4 - 1 - 0 - 5) / 13), 'the other days leave out the three being described');
   assert.ok(list.every((n) => n.next.every((d) => !d.pending)));
   const late = L.newFoods({ ...s, foodItems: [...s.foodItems, item('pear', 'Pear'), item('plum', 'Plum')],

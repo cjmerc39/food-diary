@@ -117,8 +117,10 @@ own files so it works offline; the diary itself lives only in localStorage.
   with the days to compare against all before it; and how many foods have
   not been eaten on 3 separate days yet. Every food is in exactly one of the
   four groups. The three compared foods furthest apart are always shown,
-  ranked by gap, each one sentence with its days (and each day's score) a
-  tap away, so there is always a candidate to test next. Each row carries
+  ranked by gap, each one sentence with its days a tap away: day by day in
+  order, each with its gut score and the eating days marked, so the shape
+  of a stretch (0, 6, 2) reads and not only its average. There is always a
+  candidate to test next. Each row carries
   its verdict: it clears the bar when, for every time it was eaten, its three
   days were higher than the other days, and by 1.5 or more on average
   overall (the score's smallest step is 1, so 1.5 asks for more than any

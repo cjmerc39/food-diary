@@ -496,7 +496,14 @@ details[open].standout > summary::after{content:"Hide the dates"}
 .dates{margin-top:8px;color:var(--ink2);font-size:15px;line-height:1.45}
 .dates p + p{margin-top:4px}
 .dates .chip{min-height:44px;margin-top:10px;padding:0 16px;font-size:15px}
-.row-acts{display:flex;flex-wrap:wrap;gap:8px}
+.row-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.days-seq{display:grid;gap:6px;margin:8px 0 2px}
+.days-seq .run{display:flex;flex-wrap:wrap;gap:4px}
+.days-seq .cell{min-width:52px;padding:5px 7px;border-radius:9px;background:var(--card);text-align:center;font-size:12px;line-height:1.3;color:var(--ink2)}
+.days-seq .cell b{display:block;margin-top:1px;font:700 17px/1.1 var(--round);color:var(--ink)}
+.days-seq .cell.eaten{box-shadow:inset 0 0 0 1.5px var(--food)}
+.days-seq .cell.eaten .d{color:var(--food-ink);font-weight:600}
+.report .days-seq{display:none}
 .answers.trials li{border-color:var(--food)}
 .verdict{display:block;margin-top:6px;color:var(--ink2);font-size:14px;line-height:1.4}
 .verdict.clear{color:var(--sym-ink);font-weight:600}
@@ -726,7 +733,7 @@ import {
 const APP_NAME = 'Food Diary';
 // Bump together with VERSION in sw.js on every deploy. Shown in More, so a
 // phone can confirm it picked up the update.
-const BUILD = 28;
+const BUILD = 29;
 // Fixed forever and never derived from APP_NAME: a rename must not orphan a
 // saved diary. Every app on cjmerc39.github.io shares one localStorage, so this
 // app only ever reads or writes keys that start with this one.
@@ -1543,14 +1550,29 @@ function startTrial(key) {
 function standoutText(r) {
   return `${rowName(r)}: eaten on ${dayWord(r.eatenDays)}. Those days and the two after each (${dayWord(r.afterDays)}) averaged a gut score of ${oneDp(r.avgAfter)}. The other ${dayWord(r.notDays)} averaged ${oneDp(r.avgNot)}.`;
 }
-const dayAndLoad = (d) => `${dayShort(d.day)} (score ${d.score}${d.possible ? ', possibly hidden' : ''})`;
+// An opened row shows its days in order, each with its gut score and the
+// eating days marked, so the shape of a stretch reads, not only its average.
+// Consecutive days form one run; a gap starts another.
+const runsOf = (after) => after.reduce((runs, d) => {
+  const last = runs[runs.length - 1];
+  if (last && addDays(last[last.length - 1].day, 1) === d.day) last.push(d); else runs.push([d]);
+  return runs;
+}, []);
+const possibleDays = (r) => r.dates.filter((d) => d.possible).map((d) => dayShort(d.day));
+function daySeqLegend(r) {
+  return `Day by day: ${r.eatenDays === 1 ? 'the day it was eaten' : 'each day it was eaten'} and the two after. \u25cf marks a day it was eaten.`
+    + (possibleDays(r).length ? ` It may have been hidden in a meal on ${joinNames(possibleDays(r))}.` : '');
+}
+function daySeqHtml(r) {
+  return `<div class="days-seq" role="list">${runsOf(r.after).map((run) => `<div class="run" role="presentation">${run.map((d) =>
+    `<span class="cell${d.eaten ? ' eaten' : ''}" role="listitem" aria-label="${esc(`${dayShort(d.day)}: gut score ${d.score}${d.eaten ? ', eaten' : ''}`)}"><span class="d" aria-hidden="true">${d.eaten ? '\u25cf ' : ''}${esc(dayShort(d.day))}</span><b aria-hidden="true">${d.score}</b></span>`).join('')}</div>`).join('')}</div>`;
+}
+function daySeqText(r) {
+  return `Day by day: ${runsOf(r.after).map((run) => run.map((d) => `${dayShort(d.day)}${d.eaten ? ' (eaten)' : ''} ${d.score}`).join(', ')).join('; ')}.`
+    + (possibleDays(r).length ? ` It may have been hidden in a meal on ${joinNames(possibleDays(r))}.` : '');
+}
 function standoutDatesText(r) {
-  const shadowOnly = r.after.filter((d) => !d.eaten);
-  return [
-    `Days eaten: ${r.dates.map(dayAndLoad).join(', ')}.`,
-    ...(shadowOnly.length ? [`Counted with them, as the two days after: ${shadowOnly.map(dayAndLoad).join(', ')}.`] : []),
-    ...(r.also.length > 2 ? [`All of them: ${joinNames(rowNames(r))}.`] : []),
-  ];
+  return r.also.length > 2 ? [`All of them: ${joinNames(rowNames(r))}.`] : [];
 }
 function standoutEmpty(r, rangeName) {
   if (!r.enough) return `Not enough days logged yet to compare foods over ${rangeName}.`;
@@ -1590,7 +1612,7 @@ function standoutHtml(r, rangeName) {
   const rows = r.top.length
     ? (r.top.some((row) => row.clears) ? '' : `<p class="hint standout-lead">${esc(leadText(r))}</p>`)
       + r.top.map((row) => `<details class="standout${row.clears ? ' clear' : ''}" data-key="${esc(row.key)}"><summary>${esc(standoutText(row))}<span class="verdict${row.clears ? ' clear' : ''}">${esc(verdictText(row))}</span></summary>
-    <div class="dates">${standoutDatesText(row).map((t) => `<p>${esc(t)}</p>`).join('')}${row.kind === 'name' ? ''
+    <div class="dates"><p>${esc(daySeqLegend(row))}</p>${daySeqHtml(row)}${standoutDatesText(row).map((t) => `<p>${esc(t)}</p>`).join('')}${row.kind === 'name' ? ''
       : `<div class="row-acts">${trialButtons(row)}<button class="chip" data-act="mark-safe" data-keys="${esc(safeKeys(row).join(' '))}">Mark ${esc(rowName(row))} safe</button></div>`}</div></details>`).join('')
       + `<p class="fine standout-note">${esc(TOP_NOTE)}</p>`
     : `<p class="hint standout-none">${esc(standoutEmpty(r, rangeName))}</p>`;
@@ -2178,7 +2200,7 @@ function reportHtml() {
       <p class="report-meta">Each food's days against the other days, over this range, from when symptom tracking began: the gut score of the day it was eaten and the two after, on average, and of the days outside those. ${STANDOUT_RULE} ${CAUSE_NOTE}</p>
       ${stands.map((r) => `${stands.length > 1 ? `<h3>${esc(PATHWAY_WORDS[r.who]())}</h3>` : ''}${r.top.length
         ? (r.top.some((row) => row.clears) ? '' : `<p class="report-meta">${esc(leadText(r))}</p>`)
-          + r.top.map((row) => `<p class="standout-row${row.clears ? ' clear' : ''}">${esc(standoutText(row))} <em>${esc(verdictText(row))}</em></p><p class="report-meta">${esc(standoutDatesText(row).join(' '))}</p>`).join('')
+          + r.top.map((row) => `<p class="standout-row${row.clears ? ' clear' : ''}">${esc(standoutText(row))} <em>${esc(verdictText(row))}</em></p><p class="report-meta">${esc([daySeqText(row), ...standoutDatesText(row)].join(' '))}</p>`).join('')
           + `<p class="report-meta">${esc(TOP_NOTE)}</p>`
         : `<p class="report-meta">${esc(standoutEmpty(r, rangeName))}</p>`}${r.everyday.length ? `<p class="report-meta">${esc(everydayText(r, true))}</p>` : ''}${r.adopted.length ? `<p class="report-meta">${esc(`Only eaten from a point on, so the days to compare against come from before it: ${r.adopted.map((x) => `${rowName(x)} (since ${dayShort(x.firstDay)})`).join(', ')}.`)}</p>` : ''}${r.few.length ? `<p class="report-meta">${esc(fewText(r))}</p>` : ''}`).join('')}
       ${safeFoods().length || safeTags().length ? `<p class="report-meta">Marked safe by the parent and left out: ${esc([...safeTags(), ...safeFoods()].map((x) => x.label).join(', '))}.</p>` : ''}
